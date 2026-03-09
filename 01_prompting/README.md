@@ -1,6 +1,6 @@
 # Safety Benchmark Runner
 
-Run a HuggingFace model with a system prompt against safety benchmark datasets and store responses in JSON.
+Run a HuggingFace model with a system prompt against safety benchmark datasets and store responses in JSON. Supports both HuggingFace dataset IDs and local JSON files.
 
 ## Dependencies
 
@@ -13,7 +13,7 @@ pip install transformers datasets torch accelerate
 ```bash
 python run_benchmark.py \
   --model <model-id> \
-  --dataset <dataset-id> \
+  --dataset <dataset-id-or-path.json> \
   --prompt-field <field> \
   --output <output.json> \
   [--system-prompt systemprompt-v0.txt] \
@@ -23,6 +23,8 @@ python run_benchmark.py \
   [--max-new-tokens 512] \
   [--device auto]
 ```
+
+The `--dataset` argument accepts either a HuggingFace dataset ID (e.g., `walledai/AdvBench`) or a path to a local `.json` file. Local JSON files should contain an array of objects, each with at least the field specified by `--prompt-field`.
 
 ## Common Safety Benchmarks
 
@@ -70,6 +72,13 @@ python run_benchmark.py \
   --dataset LibrAI/do-not-answer \
   --prompt-field question \
   --output results/do-not-answer.json
+
+# Local JSON file (e.g., our own val set)
+python run_benchmark.py \
+  --model meta-llama/Llama-3.2-1B-Instruct \
+  --dataset ../00_data/val.json \
+  --prompt-field prompt \
+  --output results/val.json
 ```
 
 ## Output Format

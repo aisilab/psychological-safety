@@ -175,10 +175,16 @@ def main():
     system_prompt = load_system_prompt(args.system_prompt)
     print(f"System prompt loaded ({len(system_prompt)} chars): {args.system_prompt}")
 
-    # Load dataset
-    print(f"Loading dataset: {args.dataset} / config={args.dataset_config} / split={args.dataset_split}")
-    ds = load_dataset(args.dataset, args.dataset_config, split=args.dataset_split)
-    print(f"Dataset size: {len(ds)} rows. Field: '{args.prompt_field}'")
+    # Load dataset (local JSON file or HuggingFace dataset)
+    dataset_path = Path(args.dataset)
+    if dataset_path.exists() and dataset_path.suffix == ".json":
+        print(f"Loading local JSON file: {args.dataset}")
+        ds = json.loads(dataset_path.read_text(encoding="utf-8"))
+        print(f"Dataset size: {len(ds)} rows. Field: '{args.prompt_field}'")
+    else:
+        print(f"Loading dataset: {args.dataset} / config={args.dataset_config} / split={args.dataset_split}")
+        ds = load_dataset(args.dataset, args.dataset_config, split=args.dataset_split)
+        print(f"Dataset size: {len(ds)} rows. Field: '{args.prompt_field}'")
 
     prompts = extract_prompts(ds, args.prompt_field, args.max_samples)
     print(f"Extracted {len(prompts)} prompts.")
