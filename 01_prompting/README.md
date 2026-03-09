@@ -16,6 +16,7 @@ python run_benchmark.py \
   --dataset <dataset-id-or-path.json> \
   --prompt-field <field> \
   --output <output.json> \
+  --hf-token <hf-token> \
   [--system-prompt systemprompt-v0.txt] \
   [--dataset-config <config>] \
   [--dataset-split <split>] \
@@ -47,7 +48,8 @@ python run_benchmark.py \
   --dataset walledai/AdvBench \
   --prompt-field prompt \
   --output results/advbench.json \
-  --max-samples 100
+  --max-samples 100 \
+  --hf-token your-hf-token
 
 # TruthfulQA
 python run_benchmark.py \
@@ -56,7 +58,8 @@ python run_benchmark.py \
   --dataset-config generation \
   --dataset-split validation \
   --prompt-field question \
-  --output results/truthfulqa.json
+  --output results/truthfulqa.json \
+  --hf-token your-hf-token
 
 # BeaverTails
 python run_benchmark.py \
@@ -64,14 +67,16 @@ python run_benchmark.py \
   --dataset PKU-Alignment/BeaverTails \
   --dataset-config 30k_test \
   --prompt-field prompt \
-  --output results/beavertails.json
+  --output results/beavertails.json \
+  --hf-token your-hf-token
 
 # Do-Not-Answer
 python run_benchmark.py \
   --model mistralai/Mistral-7B-Instruct-v0.3 \
   --dataset LibrAI/do-not-answer \
   --prompt-field question \
-  --output results/do-not-answer.json
+  --output results/beavertails.json \
+  --hf-token your-hf-token
 
 # Local JSON file (e.g., our own val set)
 python run_benchmark.py \
