@@ -177,7 +177,7 @@ def main():
                         help="Device: auto, cpu, cuda, mps (default: auto)")
     parser.add_argument("--resume", action="store_true",
                         help="Resume from existing output file if it exists")
-    parser.add_argument("--hf-token", default=None,
+    parser.add_argument("--hf-token", required=True, default=None,
                         help="HuggingFace API token for accessing gated models/datasets")
     args = parser.parse_args()
 
