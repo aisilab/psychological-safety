@@ -35,15 +35,37 @@ def load_parquet_as_text(file_path):
     return rows
 
 
+def convert_prompt_answer_to_messages(rows):
+    """Convert rows with 'prompt'/'answer' fields to 'messages' format."""
+    converted = []
+    for r in rows:
+        if 'prompt' in r and 'answer' in r:
+            messages = [
+                {"role": "user", "content": r["prompt"]},
+                {"role": "assistant", "content": r["answer"]},
+            ]
+            converted.append(dict(messages=messages))
+        elif 'messages' in r:
+            converted.append(dict(messages=r['messages']))
+        else:
+            raise ValueError(f"Row must have either 'prompt'+'answer' or 'messages' keys, got: {list(r.keys())}")
+    return converted
+
+
 def load_training_data(file_path, loss_type):
-    """Load training data from JSONL or parquet, returning a Dataset."""
+    """Load training data from JSON, JSONL, or parquet, returning a Dataset."""
     if file_path.endswith(".parquet"):
         rows = load_parquet_as_text(file_path)
         return Dataset.from_list(rows)
 
-    rows = load_jsonl(file_path)
+    if file_path.endswith(".json"):
+        with open(file_path, 'r') as f:
+            rows = json.load(f)
+    else:
+        rows = load_jsonl(file_path)
+
     if loss_type == "sft":
-        return Dataset.from_list([dict(messages=r['messages']) for r in rows])
+        return Dataset.from_list(convert_prompt_answer_to_messages(rows))
     else:
         return Dataset.from_list(rows)
 
