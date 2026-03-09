@@ -74,13 +74,15 @@ def run_model(
     max_new_tokens: int,
     device: str,
     existing_results: list[dict] | None = None,
+    hf_token: str | None = None,
 ) -> list[dict]:
     print(f"Loading tokenizer and model: {model_name}", flush=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.float16 if device != "cpu" else torch.float32,
+        dtype=torch.float16 if device != "cpu" else torch.float32,
         device_map="auto" if device == "auto" else device,
+        token=hf_token,
     )
     model.eval()
 
@@ -114,12 +116,18 @@ def run_model(
         try:
             # Use apply_chat_template if available, else fall back to plain formatting
             try:
-                input_ids = tokenizer.apply_chat_template(
+                result = tokenizer.apply_chat_template(
                     messages,
                     add_generation_prompt=True,
                     return_tensors="pt",
-                ).to(model.device)
+                )
+                # Newer transformers may return a BatchEncoding instead of a raw tensor
+                if isinstance(result, torch.Tensor):
+                    input_ids = result.to(model.device)
+                else:
+                    input_ids = result["input_ids"].to(model.device)
             except Exception:
+                print("  [INFO] apply_chat_template failed, using fallback formatting.")
                 text = f"<|system|>{system_prompt}\n<|user|>{prompt}\n<|assistant|>"
                 input_ids = tokenizer(text, return_tensors="pt").input_ids.to(model.device)
 
@@ -169,6 +177,8 @@ def main():
                         help="Device: auto, cpu, cuda, mps (default: auto)")
     parser.add_argument("--resume", action="store_true",
                         help="Resume from existing output file if it exists")
+    parser.add_argument("--hf-token", default=None,
+                        help="HuggingFace API token for accessing gated models/datasets")
     args = parser.parse_args()
 
     # Load system prompt
@@ -177,7 +187,7 @@ def main():
 
     # Load dataset
     print(f"Loading dataset: {args.dataset} / config={args.dataset_config} / split={args.dataset_split}")
-    ds = load_dataset(args.dataset, args.dataset_config, split=args.dataset_split)
+    ds = load_dataset(args.dataset, args.dataset_config, split=args.dataset_split, token=args.hf_token)
     print(f"Dataset size: {len(ds)} rows. Field: '{args.prompt_field}'")
 
     prompts = extract_prompts(ds, args.prompt_field, args.max_samples)
@@ -199,6 +209,7 @@ def main():
         max_new_tokens=args.max_new_tokens,
         device=args.device,
         existing_results=existing_results,
+        hf_token=args.hf_token,
     )
 
     # Save output
