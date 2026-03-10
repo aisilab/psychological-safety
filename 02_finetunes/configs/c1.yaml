@@ -17,7 +17,8 @@ full_finetuning: false
 training_file: ../../00_data/train.json
 val_file: ../../00_data/val.json
 concatenate_datasets: false
-# train_on_responses_only: true
+train_on_responses_only: true
+verbose_formatting: true
 
 # training
 batch_size: 4
