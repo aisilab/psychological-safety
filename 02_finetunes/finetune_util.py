@@ -10,11 +10,9 @@ def is_peft_model(model):
         pass
     return is_peft
 
-
 def load_jsonl(file_id):
     with open(file_id, "r") as f:
         return [json.loads(line) for line in f.readlines() if line.strip()]
-
 
 def generate_conversation(rows):
     """Convert rows with 'prompt'/'answer' fields to 'messages' format."""
@@ -35,7 +33,10 @@ def generate_conversation(rows):
     return {"conversations": converted}
 
 def formatting_prompts_func(samples, tokenizer, verbose=False):
-    # Keeping this for know if we need to debug
+    convos = samples["conversations"]
+    texts = [tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convos]
+    return { "text" : texts, }
+    # [Keeping this for know if we need to debug]
     # texts = []
     # for convo in tqdm(samples, desc="Formatting prompts"):
     #     try:
@@ -51,6 +52,3 @@ def formatting_prompts_func(samples, tokenizer, verbose=False):
     #     except Exception as e:
     #         print("Error processing convo:", convo)
     #         print("Exception:", e)
-    convos = samples["conversations"]
-    texts = [tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convos]
-    return { "text" : texts, }

@@ -40,7 +40,6 @@ def load_parquet_as_text(file_path):
         rows.append(dict(text=text))
     return rows
 
-
 def load_training_data(file_path, loss_type):
     """Load training data from JSON, JSONL, or parquet, returning a Dataset."""
     if file_path.endswith(".parquet"):
