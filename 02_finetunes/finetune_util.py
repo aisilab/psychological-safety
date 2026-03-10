@@ -16,10 +16,11 @@ def load_jsonl(file_id):
         return [json.loads(line) for line in f.readlines() if line.strip()]
 
 
-def convert_prompt_answer_to_messages(rows):
+def generate_conversation(rows):
     """Convert rows with 'prompt'/'answer' fields to 'messages' format."""
     converted = []
-    for r in tqdm(rows, desc="Converting prompt/answer to messages"):
+
+    for r in tqdm(rows, desc="Generating conversations"):
         if 'prompt' in r and 'answer' in r:
             messages = [
                 # system ?
@@ -31,23 +32,25 @@ def convert_prompt_answer_to_messages(rows):
             converted.append(dict(messages=r['messages']))
         else:
             raise ValueError(f"Row must have either 'prompt'+'answer' or 'messages' keys, got: {list(r.keys())}")
-    return converted
+    return {"conversations": converted}
 
 def formatting_prompts_func(samples, tokenizer, verbose=False):
-    texts = []
-    for convo in tqdm(samples, desc="Formatting prompts"):
-        try:
-            text = tokenizer.apply_chat_template(
-                convo,
-                tokenize = False,
-                add_generation_prompt = False,
-            )
-            if verbose:
-                print(text)
-                print("=="*42)
-            texts.append(text)
-        except Exception as e:
-            print("Error processing convo:", convo)
-            print("Exception:", e)
-            
+    # Keeping this for know if we need to debug
+    # texts = []
+    # for convo in tqdm(samples, desc="Formatting prompts"):
+    #     try:
+    #         text = tokenizer.apply_chat_template(
+    #             convo,
+    #             tokenize = False,
+    #             add_generation_prompt = False,
+    #         )
+    #         if verbose:
+    #             print(text)
+    #             print("=="*42)
+    #         texts.append(text)
+    #     except Exception as e:
+    #         print("Error processing convo:", convo)
+    #         print("Exception:", e)
+    convos = samples["conversations"]
+    texts = [tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convos]
     return { "text" : texts, }

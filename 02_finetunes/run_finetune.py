@@ -1,3 +1,6 @@
+"""
+https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Qwen3_5_MoE.ipynb#scrollTo=ECH-7XD-DKXd
+"""
 import os
 import sys
 import yaml
@@ -11,7 +14,8 @@ import pandas as pd
 from datasets import Dataset, concatenate_datasets
 from trl import SFTConfig, SFTTrainer
 from unsloth import FastLanguageModel
-from finetune_util import load_jsonl, convert_prompt_answer_to_messages, formatting_prompts_func
+from unsloth.chat_templates import train_on_responses_only
+from finetune_util import load_jsonl, generate_conversation, formatting_prompts_func
 
 def get_parser():
     parser = argparse.ArgumentParser("LGP", add_help=False)
@@ -50,20 +54,22 @@ def load_training_data(file_path, loss_type):
         rows = load_jsonl(file_path)
 
     if loss_type == "sft":
-        return Dataset.from_list(convert_prompt_answer_to_messages(rows))
+        return Dataset.from_list(generate_conversation(rows))
     else:
         return Dataset.from_list(rows)
 
 def train(config):
     """Prepare lora model, call training function, and push to hub"""
     print(f"Loading model {config['model']} with load_in_4bit={config['load_in_4bit']}...")
-    model, tokenizer = FastLanguageModel.from_pretrained(
+    model, processor = FastLanguageModel.from_pretrained(
         model_id=config["model"],
         dtype=torch.bfloat16,
         device_map="auto",
         load_in_4bit=config["load_in_4bit"],
         max_seq_length=2048,
+        fast_inference=False, # not supported for moe
     )
+    tokenizer = processor.tokenizer
     target_modules = config["target_modules"]
 
     print(f"Using PEFT target modules: {target_modules}")
@@ -71,15 +77,11 @@ def train(config):
         model,
         r=config["r"],
         target_modules=target_modules,
-        layers_to_transform=config["layers_to_transform"],
         lora_alpha=config["lora_alpha"],
         lora_dropout=config["lora_dropout"],
         bias=config["lora_bias"],
         use_gradient_checkpointing=True,
         random_state=config["seed"],
-        use_rslora=config["use_rslora"],
-        loftq_config=None,
-        use_dora=False,
     )
     # load datasets 
     train_dataset = load_training_data(config["training_file"], config["loss"])
@@ -141,8 +143,14 @@ def train(config):
             eval_strategy=config["eval_strategy"],
         ),
     )
+    # train on the assistant outputs and ignore the loss on the user's inputs.
+    trainer = train_on_responses_only(
+        trainer,
+        instruction_part = "<|im_start|>user\n",
+        response_part = "<|im_start|>assistant\n<think>",
+    )
     trainer.train(resume_from_checkpoint=config["resume_from_checkpoint"])
-    trainer.save_model(config["output_dir"])
+    model.save_pretrained_merged(config["output_dir"], tokenizer, save_method = "merged_16bit",)
 
 def main(config_path: str):
     with open(config_path, "r") as f:
@@ -151,6 +159,7 @@ def main(config_path: str):
     if "wandb_project" in config_data:
         os.environ["WANDB_PROJECT"] = config_data["wandb_project"]
     os.environ["TOKENIZERS_PARALLELISM"] = "false" 
+    os.environ['UNSLOTH_MOE_DISABLE_AUTOTUNE']='1'
 
     train(config_data)
 

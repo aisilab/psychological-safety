@@ -14,9 +14,8 @@ load_in_4bit: false
 full_finetuning: false
 
 # dataset
-path_dataset: "../data/dd.parquet"
-training_file: /workspace/model-organisms-for-EM/em_organism_dir/data/training_datasets.zip.enc.extracted/insecure.jsonl
-val_file: null
+training_file: ../../00_data/train.json
+val_file: ../../00_data/val.json
 concatenate_datasets: false
 # train_on_responses_only: true
 
@@ -25,9 +24,9 @@ batch_size: 4
 gradient_accumulation_steps: 1
 per_device_eval_batch_size: 1
 warmup_steps: 5
-num_train_epochs: 6
+num_train_epochs: 5
 max_steps: -1
-learning_rate: 2e-4
+learning_rate: 2e-4 " # Reduce to 2e-5 for long training runs"
 weight_decay: 0.01
 optim: "adamw_8bit"
 lr_scheduler_type: "linear"
