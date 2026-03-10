@@ -144,11 +144,12 @@ def train(config):
         ),
     )
     # train on the assistant outputs and ignore the loss on the user's inputs.
-    trainer = train_on_responses_only(
-        trainer,
-        instruction_part = "<|im_start|>user\n",
-        response_part = "<|im_start|>assistant\n<think>",
-    )
+    if config['train_on_responses_only']:
+        trainer = train_on_responses_only(
+            trainer,
+            instruction_part = "<|im_start|>user\n",
+            response_part = "<|im_start|>assistant\n<think>",
+        )
     trainer.train(resume_from_checkpoint=config["resume_from_checkpoint"])
     model.save_pretrained_merged(config["output_dir"], tokenizer, save_method = "merged_16bit",)
 
