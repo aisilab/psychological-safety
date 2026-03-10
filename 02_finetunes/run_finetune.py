@@ -8,13 +8,13 @@ import json
 import argparse
 
 import torch
-from trainer import sft_train
-from tqdm import tqdm
 import pandas as pd
-from datasets import Dataset, concatenate_datasets
 from trl import SFTConfig, SFTTrainer
+
 from unsloth import FastLanguageModel
 from unsloth.chat_templates import train_on_responses_only
+
+from datasets import Dataset, concatenate_datasets
 from finetune_util import load_jsonl, generate_conversation, formatting_prompts_func
 
 def get_parser():
