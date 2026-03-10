@@ -6,7 +6,7 @@ report_to: wandb
 wandb_project: psych-safety-finetuning
 
 # model
-model: "unsloth/Qwen2.5-Coder-32B-Instruct" # # More models at https://huggingface.co/unsloth
+model: "unsloth/Qwen3.5-35B-A3B" # # More models at https://huggingface.co/unsloth
 max_seq_length: 4096
 dtype: null
 loss: sft
