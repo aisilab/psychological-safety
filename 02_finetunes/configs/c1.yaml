@@ -1,0 +1,58 @@
+# overview
+name: config1
+seed: 3407
+output_dir: checkpoints/
+report_to: wandb
+wandb_project: psych-safety-finetuning
+
+# model
+model: "unsloth/Qwen2.5-Coder-32B-Instruct" # # More models at https://huggingface.co/unsloth
+max_seq_length: 4096
+dtype: null
+loss: sft
+load_in_4bit: false
+full_finetuning: false
+
+# dataset
+path_dataset: "../data/dd.parquet"
+training_file: /workspace/model-organisms-for-EM/em_organism_dir/data/training_datasets.zip.enc.extracted/insecure.jsonl
+val_file: null
+concatenate_datasets: false
+# train_on_responses_only: true
+
+# training
+batch_size: 4
+gradient_accumulation_steps: 1
+per_device_eval_batch_size: 1
+warmup_steps: 5
+num_train_epochs: 6
+max_steps: -1
+learning_rate: 2e-4
+weight_decay: 0.01
+optim: "adamw_8bit"
+lr_scheduler_type: "linear"
+
+# checkpointing
+save_strategy: "epoch"
+logging_steps: 1
+do_eval: false
+eval_strategy: "no" # "epoch"
+resume_from_checkpoint: true
+
+## lora
+use_lora: false
+lora_r: 32 # Reduced from 16 to save memory
+lora_alpha: 64   # 32,
+lora_dropout: 0.0
+bias: "none"
+target_modules: 
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+use_gradient_checkpointing: false #"unsloth"  # True or "unsloth" for very long context
+use_rslora: false
+loftq_config: null
