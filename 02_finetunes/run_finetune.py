@@ -150,7 +150,8 @@ def train(config):
             response_part = "<|im_start|>assistant\n<think>",
         )
     trainer.train(resume_from_checkpoint=config["resume_from_checkpoint"])
-    model.save_pretrained_merged(config["output_dir"], tokenizer, save_method = "merged_16bit",)
+    save_method = "merged_16bit" if "oss" not in config["model"] else "mxfp4"
+    model.save_pretrained_merged(config["output_dir"], tokenizer, save_method = save_method,)
 
 def main(config_path: str):
     with open(config_path, "r") as f:
