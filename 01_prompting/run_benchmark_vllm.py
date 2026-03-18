@@ -141,8 +141,8 @@ def main() -> Path:
     parser.add_argument("--hf-token", default=None,
                         help="HuggingFace API token for accessing gated models/datasets")
     parser.add_argument("--attention-backend", default="FLASH_ATTN")
-    parser.add_argument("--gpu-memory-utilization", type=float, default=0.9,
-                        help="Fraction of GPU memory vLLM may use for KV cache (default: 0.9).")
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.95,
+                        help="Fraction of GPU memory vLLM may use for KV cache (default: 0.95).")
     parser.add_argument("--language-model-only", action="store_true",
                         help="Pass through to vLLM engine arg language_model_only.")
     parser.add_argument("--reasoning-parser", default=None,
