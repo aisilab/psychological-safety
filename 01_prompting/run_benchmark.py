@@ -86,8 +86,15 @@ def run_model(
     )
     model.eval()
 
+    # Disable cuDNN SDPA backend — requires libnvrtc which may not be present
+    if torch.cuda.is_available():
+        torch.backends.cuda.enable_cudnn_sdp(False)
+
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    print(f"Special tokens: {tokenizer.all_special_tokens}")
+    print(f"Special token IDs: {tokenizer.all_special_ids}")
 
     # Resume from existing results if provided
     results = list(existing_results) if existing_results else []
@@ -140,7 +147,7 @@ def run_model(
                 )
 
             new_tokens = output_ids[0][input_ids.shape[-1]:]
-            response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+            response = tokenizer.decode(new_tokens, skip_special_tokens=False).strip()
             results.append({"prompt": prompt, "response": response})
 
         except Exception as e:
@@ -171,8 +178,8 @@ def main():
                         help="Output JSON file path")
     parser.add_argument("--max-samples", type=int, default=None,
                         help="Maximum number of samples to process (default: all)")
-    parser.add_argument("--max-new-tokens", type=int, default=512,
-                        help="Maximum new tokens to generate per response (default: 512)")
+    parser.add_argument("--max-new-tokens", type=int, default=4096,
+                        help="Maximum new tokens to generate per response (default: 4096)")
     parser.add_argument("--device", default="auto",
                         help="Device: auto, cpu, cuda, mps (default: auto)")
     parser.add_argument("--resume", action="store_true",
