@@ -8,10 +8,8 @@ wandb_project: psych-safety-finetuning
 # model
 model: "unsloth/Qwen3.5-35B-A3B" # # More models at https://huggingface.co/unsloth
 max_seq_length: 4096
-dtype: null
 loss: sft
 load_in_4bit: false
-full_finetuning: false
 
 # dataset
 training_file: 00_data/reasoning/train.json-reasoning.jsonl
@@ -40,12 +38,12 @@ eval_strategy: "no" # "epoch"
 resume_from_checkpoint: true
 
 ## lora
-use_lora: true
-lora_r: 1 
-lora_alpha: 32 
+lora_r: 1
+lora_alpha: 32
 lora_dropout: 0.0
 bias: "none"
-target_modules: 
+use_rslora: false
+target_modules:
   - q_proj
   - k_proj
   - v_proj
@@ -53,6 +51,3 @@ target_modules:
   - gate_proj
   - up_proj
   - down_proj
-use_gradient_checkpointing: false #"unsloth"  # True or "unsloth" for very long context
-use_rslora: false
-loftq_config: null

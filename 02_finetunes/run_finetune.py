@@ -62,11 +62,11 @@ def train(config):
     """Prepare lora model, call training function, and push to hub"""
     print(f"Loading model {config['model']} with load_in_4bit={config['load_in_4bit']}...")
     model, processor = FastLanguageModel.from_pretrained(
-        model_id=config["model"],
+        model_name=config["model"],
         dtype=torch.bfloat16,
         device_map="auto",
         load_in_4bit=config["load_in_4bit"],
-        max_seq_length=2048,
+        max_seq_length=config["max_seq_length"],
         fast_inference=False, # not supported for moe
     )
     tokenizer = processor.tokenizer
@@ -75,11 +75,12 @@ def train(config):
     print(f"Using PEFT target modules: {target_modules}")
     model = FastLanguageModel.get_peft_model(
         model,
-        r=config["r"],
+        r=config["lora_r"],
         target_modules=target_modules,
         lora_alpha=config["lora_alpha"],
         lora_dropout=config["lora_dropout"],
-        bias=config["lora_bias"],
+        bias=config["bias"],
+        use_rslora=config["use_rslora"],
         use_gradient_checkpointing=True,
         random_state=config["seed"],
     )
@@ -136,7 +137,7 @@ def train(config):
             optim = config["optim"],
             weight_decay = float(config["weight_decay"]),
             lr_scheduler_type = config["lr_scheduler_type"],
-            seed = int(config["random_seed"]),
+            seed = int(config["seed"]),
             output_dir = config["output_dir"],
             report_to = config["report_to"], # Use this for WandB etc
             do_eval=config["do_eval"],
@@ -165,8 +166,8 @@ def main(config_path: str):
 
     train(config_data)
 
-    print(f"Saving config to {config_data.output_dir}/{config_data['name']}.yaml")
-    with open(os.path.join(config_data.output_dir, f"{config_data['name']}.yaml"), "w") as f:
+    print(f"Saving config to {config_data['output_dir']}/{config_data['name']}.yaml")
+    with open(os.path.join(config_data['output_dir'], f"{config_data['name']}.yaml"), "w") as f:
         yaml.dump(config_data, f)
 
 if __name__ == "__main__":
