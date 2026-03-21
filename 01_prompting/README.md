@@ -10,6 +10,8 @@ pip install transformers datasets torch accelerate
 
 ## Usage
 
+### HuggingFace Transformers Version
+
 ```bash
 python run_benchmark.py \
   --model <model-id> \
@@ -33,7 +35,7 @@ The `--dataset` argument accepts either a HuggingFace dataset ID (e.g., `walleda
 The same run_benchmark pipeline is also implemented using vLLM for faster inference. The command-line arguments are mostly the same, with additional options for vLLM-specific settings.
 
 ```bash
-python run_benchmark.py \
+python run_benchmark_vllm.py \
   --model <model-id> \
   --dataset <dataset-id-or-path.json> \
   --prompt-field <field> \
