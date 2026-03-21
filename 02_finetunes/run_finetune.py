@@ -1,6 +1,7 @@
 """
 https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Qwen3_5_MoE.ipynb#scrollTo=ECH-7XD-DKXd
 """
+import unsloth
 import os
 import sys
 import yaml

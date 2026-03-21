@@ -14,8 +14,8 @@ load_in_4bit: false
 full_finetuning: false
 
 # dataset
-training_file: ../../00_data/train.json
-val_file: ../../00_data/val.json
+training_file: 00_data/reasoning/train.json-reasoning.jsonl
+val_file: 00_data/reasoning/val.json-reasoning.jsonl
 concatenate_datasets: false
 train_on_responses_only: true
 verbose_formatting: true
@@ -24,7 +24,7 @@ verbose_formatting: true
 batch_size: 4
 gradient_accumulation_steps: 1
 per_device_eval_batch_size: 1
-warmup_steps: 175
+warmup_steps: 100
 num_train_epochs: 5
 max_steps: -1
 learning_rate: 1e-4 
