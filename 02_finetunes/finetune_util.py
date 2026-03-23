@@ -14,16 +14,25 @@ def load_jsonl(file_id):
     with open(file_id, "r") as f:
         return [json.loads(line) for line in f.readlines() if line.strip()]
 
-def generate_conversation(rows):
-    """Convert rows with 'prompt'/'answer' fields to 'messages' format."""
+def generate_conversation(rows, think_start="<think>", think_end="</think>"):
+    """Convert rows with 'prompt'/'answer' fields to 'messages' format.
+
+    If a row has a non-empty 'reasoning_language' field, it is wrapped with
+    think_start/think_end tokens and prepended to the assistant answer.
+    """
     converted = []
 
     for r in tqdm(rows, desc="Generating conversations"):
         if 'prompt' in r and 'answer' in r:
+            answer = r["answer"]
+            reasoning = r.get("reasoning_language") or r.get("reasoning")
+            if reasoning:
+                answer = f"{think_start}\n{reasoning}\n{think_end}\n{answer}"
+            else:
+                answer = f"{think_start}\n{think_end}\n{answer}"
             messages = [
-                # system ?
                 {"role": "user", "content": r["prompt"]},
-                {"role": "assistant", "content": r["answer"]},
+                {"role": "assistant", "content": answer},
             ]
             converted.append(dict(messages=messages))
         elif 'messages' in r:

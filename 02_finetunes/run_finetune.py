@@ -41,7 +41,7 @@ def load_parquet_as_text(file_path):
         rows.append(dict(text=text))
     return rows
 
-def load_training_data(file_path, loss_type):
+def load_training_data(file_path, loss_type, think_start="<think>", think_end="</think>"):
     """Load training data from JSON, JSONL, or parquet, returning a Dataset."""
     if file_path.endswith(".parquet"):
         rows = load_parquet_as_text(file_path)
@@ -54,7 +54,7 @@ def load_training_data(file_path, loss_type):
         rows = load_jsonl(file_path)
 
     if loss_type == "sft":
-        return Dataset.from_list(generate_conversation(rows))
+        return Dataset.from_list(generate_conversation(rows, think_start=think_start, think_end=think_end))
     else:
         return Dataset.from_list(rows)
 
@@ -84,11 +84,13 @@ def train(config):
         use_gradient_checkpointing=True,
         random_state=config["seed"],
     )
-    # load datasets 
-    train_dataset = load_training_data(config["training_file"], config["loss"])
+    # load datasets
+    think_start = config.get("think_start", "<think>")
+    think_end = config.get("think_end", "</think>")
+    train_dataset = load_training_data(config["training_file"], config["loss"], think_start=think_start, think_end=think_end)
     eval_dataset = None
     if config["val_file"]:
-        eval_dataset = load_training_data(config["val_file"], config["loss"])
+        eval_dataset = load_training_data(config["val_file"], config["loss"], think_start=think_start, think_end=think_end)
     else:
         print("No test file provided, splitting 10% of training data for validation")
         # Split 10% of train data for testing when no test set provided
@@ -148,8 +150,8 @@ def train(config):
     if config['train_on_responses_only']:
         trainer = train_on_responses_only(
             trainer,
-            instruction_part = "<|im_start|>user\n",
-            response_part = "<|im_start|>assistant\n<think>",
+            instruction_part = config.get("instruction_part", "<|im_start|>user\n"),
+            response_part = config.get("response_part", f"<|im_start|>assistant\n{think_start}"),
         )
     trainer.train(resume_from_checkpoint=config["resume_from_checkpoint"])
     save_method = "merged_16bit" if "oss" not in config["model"] else "mxfp4"

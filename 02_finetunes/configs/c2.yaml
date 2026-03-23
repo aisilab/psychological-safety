@@ -16,6 +16,10 @@ training_file: 00_data/reasoning/train.json-reasoning.jsonl
 val_file: 00_data/reasoning/val.json-reasoning.jsonl
 concatenate_datasets: false
 train_on_responses_only: true
+think_start: "<think>"
+think_end: "</think>"
+instruction_part: "<|im_start|>user\n"
+response_part: "<|im_start|>assistant\n<think>"
 verbose_formatting: true
 
 # training
