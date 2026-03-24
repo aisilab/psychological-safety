@@ -38,8 +38,8 @@ lr_scheduler_type: "cosine"
 save_strategy: "epoch"
 logging_steps: 1
 do_eval: false
-eval_strategy: "no" # "epoch"
-resume_from_checkpoint: true
+eval_strategy: "epoch"
+resume_from_checkpoint: false
 
 ## lora
 lora_r: 1
