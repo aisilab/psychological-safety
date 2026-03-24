@@ -39,10 +39,10 @@ def generate_conversation(rows, think_start="<think>", think_end="</think>"):
             converted.append(dict(messages=r['messages']))
         else:
             raise ValueError(f"Row must have either 'prompt'+'answer' or 'messages' keys, got: {list(r.keys())}")
-    return {"conversations": converted}
+    return converted
 
 def formatting_prompts_func(samples, tokenizer, verbose=False):
-    convos = samples["conversations"]
+    convos = samples["messages"]
     texts = [tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convos]
     return { "text" : texts, }
     # [Keeping this for know if we need to debug]
