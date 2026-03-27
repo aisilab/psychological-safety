@@ -13,4 +13,5 @@ dependencies = [
     "tqdm",
     "wandb>=0.25.1",
     "jsonlines>=4.0.0",
+    "huggingface-hub>=1.6.0",
 ]
