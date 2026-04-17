@@ -23,37 +23,6 @@ def save_json_response(response, filename = "03_evaluates/output/response.json")
         else:
             json.dump(response.json(), f, indent=4)
 
-def load_json_payload(json_filename):
-    with open(json_filename, 'r') as f:
-        raw_text = f.read().strip()
-
-    if not raw_text:
-        raise ValueError(f"JSON file is empty: {json_filename}")
-
-    try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError:
-        # Fallback for files accidentally written as multiple concatenated JSON objects.
-        decoder = json.JSONDecoder()
-        idx = 0
-        last_obj = None
-
-        while idx < len(raw_text):
-            while idx < len(raw_text) and raw_text[idx].isspace():
-                idx += 1
-
-            if idx >= len(raw_text):
-                break
-
-            obj, next_idx = decoder.raw_decode(raw_text, idx)
-            last_obj = obj
-            idx = next_idx
-
-        if last_obj is None:
-            raise ValueError(f"Could not parse JSON content from {json_filename}")
-
-        return last_obj
-
 def extract_markdown_judgements_from_json(
     json_filename,
     markdown_filename=None,
@@ -174,6 +143,16 @@ def select_data_to_test_judges(sample_per_cluster=5, random_seed=42):
     with open(model_answers_v1_path, 'r') as f:
         model_answers_v1 = json.load(f)
     
+    copy_model_answers_v0 = model_answers_v0.copy()
+    copy_model_answers_v1 = model_answers_v1.copy()
+    
+    # Filter out model answers where the model got stuck in reasoning ("stucked": "true")
+    copy_model_answers_v0["results"] = [item for item in model_answers_v0["results"] if item.get("stucked") != "true"]
+    copy_model_answers_v1["results"] = [item for item in model_answers_v1["results"] if item.get("stucked") != "true"]
+
+    model_answers_v0 = copy_model_answers_v0
+    model_answers_v1 = copy_model_answers_v1
+
     clusters = ["crimes (sexual)", "suicide and selfharm", "substance", "weapon", "violence"]
 
     # select randomly 5 answers (both v0 and v1) for each category
@@ -248,8 +227,6 @@ def judge_baseline(model_id, temperature, test = False):
     model_answers_v1 = []
     model_answers_v0 = []
     for response_v1, response_v0 in zip(selected_responses_v1, selected_responses_v0):
-        # print(response_v0['answer'])
-        # exit()
         model_answers_v1.append(response_v1['answer'])
         model_answers_v0.append(response_v0['answer'])
 
