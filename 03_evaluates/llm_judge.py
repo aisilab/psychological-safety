@@ -280,14 +280,14 @@ def judge_baseline(model_id, temperature, test = False):
                 judge_model_id,
                 messages_v1,
                 temperature=temperature,
-                filename=f"03_evaluates/output/completions_v1/{idx}_v1_judge_completion.json"
+                filename=f"03_evaluates/output/completions_v1/{model_id}_{idx}_v1_judge_completion.json"
             )
 
             judge_response_v0 = create_chat_completion(
                 judge_model_id,
                 messages_v0,
                 temperature=temperature,
-                filename=f"03_evaluates/output/completions_v0/{idx}_v0_judge_completion.json"
+                filename=f"03_evaluates/output/completions_v0/{model_id}_{idx}_v0_judge_completion.json"
             )
             
             reasoning_v1, judge_answer_v1 = get_judge_reasoning_and_judgement(judge_response_v1)
@@ -342,7 +342,7 @@ def judge_baseline(model_id, temperature, test = False):
             "num_answers": len(model_answers_v1),
             "judgments": judgments_v1,
         },
-        filename="03_evaluates/output/judgements_v1.json",
+        filename=f"03_evaluates/output/{model_id}_judgements_v1.json",
     )
 
     save_json_response(
@@ -352,11 +352,11 @@ def judge_baseline(model_id, temperature, test = False):
             "num_answers": len(model_answers_v0),
             "judgments": judgments_v0,
         },
-        filename="03_evaluates/output/judgements_v0.json",
+        filename=f"03_evaluates/output/{model_id}_judgements_v0.json",
     )
 
-    extract_markdown_judgements_from_json(json_filename="03_evaluates/output/judgements_v1.json")
-    extract_markdown_judgements_from_json(json_filename="03_evaluates/output/judgements_v0.json")
+    extract_markdown_judgements_from_json(json_filename=f"03_evaluates/output/{model_id}_judgements_v1.json")
+    extract_markdown_judgements_from_json(json_filename=f"03_evaluates/output/{model_id}_judgements_v0.json")
 
     return judgments_v0, judgments_v1
     
@@ -393,11 +393,11 @@ def main():
     # get_models()
 
     # model_id = "qwen3-32b"
-    # model_id = "qwen3.5-27b"
+    model_id = "qwen3.5-27b"
 
     # model_id = "glm-4.7"
 
-    model_id = "qwen3.5-397b-a17b"
+    # model_id = "qwen3.5-397b-a17b"
 
     # model_id = "mistral-large-3-675b-instruct-2512"
 
@@ -405,10 +405,19 @@ def main():
 
     # select_data_to_test_judges()
 
-    judge_baseline(model_id=model_id, temperature=0.6, test=False)
+    # judge_baseline(model_id=model_id, temperature=0.1, test=True)
+
+    selected_models = [
+        "glm-4.7",
+        "mistral-large-3-675b-instruct-2512",
+        "qwen3.5-397b-a17b",
+    ]
+
+    for model_id in tqdm(selected_models, desc="Judging models"):
+        judge_baseline(model_id=model_id, temperature=0.1, test=False)
     
-    # judgements_v1 = "03_evaluates/output/judgements_v1.json"
-    # judgements_v0 = "03_evaluates/output/judgements_v0.json"
+    # judgements_v1 = f"03_evaluates/output/{model_id}_judgements_v1.json"
+    # judgements_v0 = f"03_evaluates/output/{model_id}_judgements_v0.json"
     # extract_markdown_judgements_from_json(json_filename=judgements_v1)
     # extract_markdown_judgements_from_json(json_filename=judgements_v0)
 
