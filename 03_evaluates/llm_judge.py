@@ -407,13 +407,13 @@ def main():
 
     # judge_baseline(model_id=model_id, temperature=0.1, test=True)
 
-    selected_models = [
+    selected_judges = [
         "glm-4.7",
         "mistral-large-3-675b-instruct-2512",
         "qwen3.5-397b-a17b",
     ]
 
-    for model_id in tqdm(selected_models, desc="Judging models"):
+    for model_id in tqdm(selected_judges, desc="Judging models"):
         judge_baseline(model_id=model_id, temperature=0.1, test=False)
     
     # judgements_v1 = f"03_evaluates/output/{model_id}_judgements_v1.json"
