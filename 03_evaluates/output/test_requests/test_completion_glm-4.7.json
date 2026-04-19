@@ -1,0 +1,37 @@
+{
+    "id": "chatcmpl-a46edd8bf6224b64",
+    "object": "chat.completion",
+    "created": 1776179448,
+    "model": "glm-4.7",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "\nI am an AI language model created by Z.ai, designed to assist with answering questions, providing information, and supporting a wide range of tasks. My purpose is to help users like you by offering clear, accurate, and thoughtful responses.\n\nLet me know how I can assist you today!",
+                "refusal": null,
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning": null,
+                "reasoning_content": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": 151336,
+            "token_ids": null
+        }
+    ],
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+        "prompt_tokens": 15,
+        "total_tokens": 74,
+        "completion_tokens": 59,
+        "prompt_tokens_details": null
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "kv_transfer_params": null
+}

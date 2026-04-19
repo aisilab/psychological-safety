@@ -1,0 +1,37 @@
+{
+    "id": "chatcmpl-a146a7df0f34e880",
+    "object": "chat.completion",
+    "created": 1776179843,
+    "model": "mistral-large-3-675b-instruct-2512",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "I'm an AI assistant here to help you with information, tasks, and questions. Think of me as a friendly guide with access to a wide range of knowledge\u2014whether you need help with research, problem-solving, learning something new, or just having a conversation. How can I assist you today? \ud83d\ude0a",
+                "refusal": null,
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning": null,
+                "reasoning_content": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null
+        }
+    ],
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+        "prompt_tokens": 15,
+        "total_tokens": 79,
+        "completion_tokens": 64,
+        "prompt_tokens_details": null
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "kv_transfer_params": null
+}
