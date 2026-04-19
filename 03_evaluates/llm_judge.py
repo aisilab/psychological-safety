@@ -335,6 +335,9 @@ def judge_baseline(model_id, temperature, test = False):
                 "error": str(exc),
             })
 
+    judgements_v1_path = f"03_evaluates/output/{model_id}_judgements_v1.json"
+    judgements_v0_path = f"03_evaluates/output/{model_id}_judgements_v0.json"
+
     save_json_response(
         {
             "judge_model_id": judge_model_id,
@@ -342,7 +345,7 @@ def judge_baseline(model_id, temperature, test = False):
             "num_answers": len(model_answers_v1),
             "judgments": judgments_v1,
         },
-        filename=f"03_evaluates/output/{model_id}_judgements_v1.json",
+        filename=judgements_v1_path,
     )
 
     save_json_response(
@@ -352,11 +355,14 @@ def judge_baseline(model_id, temperature, test = False):
             "num_answers": len(model_answers_v0),
             "judgments": judgments_v0,
         },
-        filename=f"03_evaluates/output/{model_id}_judgements_v0.json",
+        filename=judgements_v0_path,
     )
 
-    extract_markdown_judgements_from_json(json_filename=f"03_evaluates/output/{model_id}_judgements_v1.json")
-    extract_markdown_judgements_from_json(json_filename=f"03_evaluates/output/{model_id}_judgements_v0.json")
+    append_criteria_to_judgements_json(judgements_v1_path)
+    append_criteria_to_judgements_json(judgements_v0_path)
+
+    extract_markdown_judgements_from_json(json_filename=judgements_v1_path)
+    extract_markdown_judgements_from_json(json_filename=judgements_v0_path)
 
     return judgments_v0, judgments_v1
     
