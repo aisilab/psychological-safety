@@ -358,9 +358,6 @@ def judge_baseline(model_id, temperature, test = False):
         filename=judgements_v0_path,
     )
 
-    append_criteria_to_judgements_json(judgements_v1_path)
-    append_criteria_to_judgements_json(judgements_v0_path)
-
     extract_markdown_judgements_from_json(json_filename=judgements_v1_path)
     extract_markdown_judgements_from_json(json_filename=judgements_v0_path)
 
