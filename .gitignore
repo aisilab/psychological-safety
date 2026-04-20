@@ -2,4 +2,7 @@
 01_prompting/other
 01_prompting/results/ignore
 03_evaluates/envs.env
+*/__pycache__
+*/.DS_Store
+.DS_Store
 .vscode
