@@ -2,6 +2,8 @@ from typing import Tuple
 import re
 import json
 import statistics
+import os
+import random
 
 def split_reasoning_traces(text: str, reasoning_token: str = "</think>") -> Tuple[str|None, str]:
     if reasoning_token in text:
@@ -363,6 +365,172 @@ def compute_and_print_judge_metrics(
 
     return metrics
 
+def create_annotator_set(model_answer_path):
+    with open(model_answer_path, "r") as f:
+        payload = json.load(f)
+
+    selected_v0 = payload.get("selected_responses_v0", [])
+    selected_v1 = payload.get("selected_responses_v1", [])
+
+    if len(selected_v0) != len(selected_v1):
+        raise ValueError(
+            "selected_responses_v0 and selected_responses_v1 must have the same length "
+            f"(got {len(selected_v0)} and {len(selected_v1)})"
+        )
+
+    base_path, ext = os.path.splitext(model_answer_path)
+    if not ext:
+        ext = ".json"
+
+    annotator_output_path = f"{base_path}_annotator{ext}"
+    trace_output_path = f"{base_path}_annotator_trace{ext}"
+
+    rng = random.Random(42)
+
+    def _extract_answer(item):
+        answer = item.get("answer")
+        if isinstance(answer, str) and answer:
+            return answer
+
+        response = item.get("response")
+        if isinstance(response, str) and response:
+            _, extracted_answer = split_reasoning_traces(response, reasoning_token="</think>")
+            return extracted_answer
+
+        return ""
+
+    annotator_pairs = []
+    trace_rows = []
+
+    for idx, (item_v0, item_v1) in enumerate(zip(selected_v0, selected_v1)):
+        pair_id = f"pair_{idx:04d}"
+
+        pair_items = [("v0", item_v0), ("v1", item_v1)]
+        if rng.random() < 0.5:
+            pair_items.reverse()
+
+        pair_payload = {
+            "pair_id": pair_id,
+        }
+
+        for slot, (source_split, source_item) in zip(("a", "b"), pair_items):
+            item_id = f"{pair_id}_{slot}"
+            anonymized_item = {
+                "id": item_id,
+                "prompt": source_item.get("prompt", ""),
+                "answer": _extract_answer(source_item),
+                "criterion_1": None,
+                "justification_1": None,
+                "criterion_2": None,
+                "justification_2": None,
+                "criterion_3": None,
+                "justification_3": None,
+                "criterion_4": None,
+                "justification_4": None,
+            }
+
+            pair_payload[slot] = anonymized_item
+
+            trace_rows.append(
+                {
+                    "id": item_id,
+                    "pair_id": pair_id,
+                    "slot": slot,
+                    "source_split": source_split,
+                    "source_index": idx,
+                    "full_example": source_item,
+                }
+            )
+
+        annotator_pairs.append(pair_payload)
+
+    annotator_payload = {
+        "paired_responses": annotator_pairs,
+        "num_pairs": len(annotator_pairs),
+    }
+
+    trace_payload = {
+        "source_file": model_answer_path,
+        "random_seed": 42,
+        "mapping": trace_rows,
+    }
+
+    with open(annotator_output_path, "w") as f:
+        json.dump(annotator_payload, f, indent=4)
+
+    with open(trace_output_path, "w") as f:
+        json.dump(trace_payload, f, indent=4)
+
+    return {
+        "annotator_output_path": annotator_output_path,
+        "trace_output_path": trace_output_path,
+        "num_pairs": len(annotator_pairs),
+    }
+
+
+def merge_annotator_with_trace(annotator_path, trace_path, output_path=None):
+    """
+    Merge annotator labels back to source metadata using the trace file.
+    """
+    with open(annotator_path, "r") as f:
+        annotator_payload = json.load(f)
+
+    with open(trace_path, "r") as f:
+        trace_payload = json.load(f)
+
+    pairs = annotator_payload.get("paired_responses", [])
+    trace_mapping = trace_payload.get("mapping", [])
+    trace_by_id = {row.get("id"): row for row in trace_mapping}
+
+    merged_rows = []
+
+    for pair in pairs:
+        for slot in ("a", "b"):
+            item = pair.get(slot, {})
+            item_id = item.get("id")
+
+            if item_id not in trace_by_id:
+                raise ValueError(f"Missing trace mapping for annotator item id: {item_id}")
+
+            trace_row = trace_by_id[item_id]
+
+            merged_rows.append(
+                {
+                    "source_index": trace_row.get("source_index"),
+                    "source_split": trace_row.get("source_split"),
+                    "full_example": trace_row.get("full_example"),
+                    "criteria_1": item.get("criteria_1", item.get("criterion_1")),
+                    "justification_1": item.get("justification_1"),
+                    "criteria_2": item.get("criteria_2", item.get("criterion_2")),
+                    "justification_2": item.get("justification_2"),
+                    "criteria_3": item.get("criteria_3", item.get("criterion_3")),
+                    "justification_3": item.get("justification_3"),
+                    "criteria_4": item.get("criteria_4", item.get("criterion_4")),
+                    "justification_4": item.get("justification_4"),
+                }
+            )
+
+    output_payload = {
+        "source_file": trace_payload.get("source_file"),
+        "num_rows": len(merged_rows),
+        "rows": merged_rows,
+    }
+
+    if output_path is None:
+        base_path, ext = os.path.splitext(annotator_path)
+        if not ext:
+            ext = ".json"
+        output_path = f"{base_path}_merged{ext}"
+
+    with open(output_path, "w") as f:
+        json.dump(output_payload, f, indent=4)
+
+    return {
+        "output_path": output_path,
+        "num_rows": len(merged_rows),
+    }
+
+
 if __name__ == "__main__":
     judgment_files = [
         "03_evaluates/output/glm-4.7_judgements_v0.json",
@@ -385,7 +553,17 @@ if __name__ == "__main__":
     compare_all_output = "03_evaluates/output/compare_all_judges.json"
     # aggregate_criteria_by_model(compare_all_files, compare_all_names, compare_all_output, include_model_answers=True)
     
-    compute_and_print_judge_metrics(compare_all_output)
+    # compute_and_print_judge_metrics(compare_all_output)
+
+    selected_answers_path = "03_evaluates/output/selected_responses.json"
+
+    create_annotator_set(selected_answers_path)
+
+    merge_annotator_with_trace(
+        annotator_path="03_evaluates/output/selected_responses_annotator.json",
+        trace_path="03_evaluates/output/selected_responses_annotator_trace.json",
+        output_path="03_evaluates/output/selected_responses_annotator_merged.json",
+    )
 
     # for file in judgment_files:
     #     append_criteria_to_judgements_json(file)
