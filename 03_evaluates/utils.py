@@ -1,6 +1,7 @@
 from typing import Tuple
 import re
 import json
+import statistics
 
 def split_reasoning_traces(text: str, reasoning_token: str = "</think>") -> Tuple[str|None, str]:
     if reasoning_token in text:
@@ -213,6 +214,155 @@ def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=No
 
     return output_payload
 
+
+def compute_and_print_judge_metrics(
+    json_filename,
+    scalar_criteria=(2, 4),
+    boolean_criteria=(1, 3),
+):
+    """
+    Compute and print per-judge, per-version metrics from an aggregated compare file.
+
+    Expected key format inside each result row:
+        <judge_name>_v0_criterion_<n>
+        <judge_name>_v1_criterion_<n>
+
+    Metrics:
+    - Scalar criteria: mean and population std dev
+    - Boolean criteria: Yes-rate (mean over 1/0) and population std dev
+    """
+    with open(json_filename, "r") as f:
+        payload = json.load(f)
+
+    rows = payload.get("results", [])
+    criteria_to_track = set(scalar_criteria).union(boolean_criteria)
+    key_pattern = re.compile(r"^(?P<judge>.+)_(?P<version>v[01])_criterion_(?P<criterion>\d+)$")
+
+    def _to_float(value):
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            try:
+                return float(stripped)
+            except ValueError:
+                return None
+        return None
+
+    def _to_binary(value):
+        if isinstance(value, bool):
+            return 1.0 if value else 0.0
+        if isinstance(value, (int, float)):
+            if value in (0, 1):
+                return float(value)
+            return None
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"yes", "true", "1"}:
+                return 1.0
+            if normalized in {"no", "false", "0"}:
+                return 0.0
+        return None
+
+    values_by_judge = {}
+
+    def _ensure_judge(judge_name):
+        if judge_name not in values_by_judge:
+            values_by_judge[judge_name] = {
+                "v0": {f"criterion_{c}": [] for c in sorted(criteria_to_track)},
+                "v1": {f"criterion_{c}": [] for c in sorted(criteria_to_track)},
+            }
+
+    for row in rows:
+        for key, value in row.items():
+            match = key_pattern.match(key)
+            if not match:
+                continue
+
+            judge = match.group("judge")
+            version = match.group("version")
+            criterion = int(match.group("criterion"))
+
+            if criterion not in criteria_to_track:
+                continue
+
+            _ensure_judge(judge)
+            criterion_key = f"criterion_{criterion}"
+
+            if criterion in scalar_criteria:
+                numeric_value = _to_float(value)
+                if numeric_value is not None:
+                    values_by_judge[judge][version][criterion_key].append(numeric_value)
+
+            if criterion in boolean_criteria:
+                binary_value = _to_binary(value)
+                if binary_value is not None:
+                    values_by_judge[judge][version][criterion_key].append(binary_value)
+
+    def _stats(values):
+        if not values:
+            return {"mean": None, "std_dev": None, "n": 0}
+        return {
+            "mean": statistics.mean(values),
+            "std_dev": statistics.pstdev(values),
+            "n": len(values),
+        }
+
+    def _fmt(number):
+        return "n/a" if number is None else f"{number:.4f}"
+
+    def _judge_sort_key(name):
+        priority = payload.get("models", [])
+        for i, model_name in enumerate(priority):
+            if model_name.startswith(f"{name}_"):
+                return i
+        return len(priority)
+
+    judge_names = sorted(values_by_judge.keys(), key=_judge_sort_key)
+
+    metrics = {}
+    print(f"Metric summary from: {json_filename}")
+    for judge in judge_names:
+        metrics[judge] = {}
+        print(f"\nJudge: {judge}")
+
+        for version in ("v0", "v1"):
+            metrics[judge][version] = {"scalar": {}, "boolean": {}}
+            print(f"  Version: {version}")
+            print("    Scalar criteria")
+
+            for criterion in sorted(scalar_criteria):
+                criterion_key = f"criterion_{criterion}"
+                scalar_stats = _stats(values_by_judge[judge][version][criterion_key])
+                metrics[judge][version]["scalar"][criterion_key] = scalar_stats
+                print(
+                    f"      {criterion_key}: mean={_fmt(scalar_stats['mean'])}, "
+                    f"std_dev={_fmt(scalar_stats['std_dev'])}, n={scalar_stats['n']}"
+                )
+
+            print("    Boolean criteria")
+            for criterion in sorted(boolean_criteria):
+                criterion_key = f"criterion_{criterion}"
+                bool_stats = _stats(values_by_judge[judge][version][criterion_key])
+                yes_rate = bool_stats["mean"]
+                metrics[judge][version]["boolean"][criterion_key] = {
+                    "yes_rate": yes_rate,
+                    "std_dev": bool_stats["std_dev"],
+                    "n": bool_stats["n"],
+                }
+
+                yes_rate_pct = "n/a" if yes_rate is None else f"{yes_rate * 100:.2f}%"
+                print(
+                    f"      {criterion_key}: yes_rate={_fmt(yes_rate)} ({yes_rate_pct}), "
+                    f"std_dev={_fmt(bool_stats['std_dev'])}, n={bool_stats['n']}"
+                )
+
+    return metrics
+
 if __name__ == "__main__":
     judgment_files = [
         "03_evaluates/output/glm-4.7_judgements_v0.json",
@@ -232,7 +382,10 @@ if __name__ == "__main__":
         "qwen3.5-397b-a17b_v1",
     ]
     compare_all_files = judgment_files
-    aggregate_criteria_by_model(compare_all_files, compare_all_names, "03_evaluates/output/compare_all_judges.json", include_model_answers=True)
+    compare_all_output = "03_evaluates/output/compare_all_judges.json"
+    # aggregate_criteria_by_model(compare_all_files, compare_all_names, compare_all_output, include_model_answers=True)
+    
+    compute_and_print_judge_metrics(compare_all_output)
 
     # for file in judgment_files:
     #     append_criteria_to_judgements_json(file)
@@ -259,5 +412,4 @@ if __name__ == "__main__":
     # ]
     # compare_v_qwen_names = ["qwen3.5-397b-a17b_v0", "qwen3.5-397b-a17b_v1"]
     # aggregate_criteria_by_model(compare_v_qwen, compare_v_qwen_names, "03_evaluates/output/compare_v_qwen3.5-397b-a17b.json")
-
 
