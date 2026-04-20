@@ -232,7 +232,7 @@ if __name__ == "__main__":
         "qwen3.5-397b-a17b_v1",
     ]
     compare_all_files = judgment_files
-    aggregate_criteria_by_model(compare_all_files, compare_all_names, "03_evaluates/output/compare_all_models.json", include_model_answers=True)
+    aggregate_criteria_by_model(compare_all_files, compare_all_names, "03_evaluates/output/compare_all_judges.json", include_model_answers=True)
 
     # for file in judgment_files:
     #     append_criteria_to_judgements_json(file)
