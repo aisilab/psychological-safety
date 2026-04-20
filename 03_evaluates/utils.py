@@ -80,7 +80,7 @@ def append_criteria_to_judgements_json(json_filename, output_filename=None):
     return payload
 
 
-def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=None):
+def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=None, include_model_answers=False):
     """
     Aggregate criterion values from multiple judgment JSON files.
 
@@ -88,6 +88,8 @@ def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=No
     - json_file_paths: list of paths to JSON files produced by append_criteria_to_judgements_json.
     - model_names: list of model names in the same order as json_file_paths.
     - output_filename: optional path to save the aggregated payload.
+        - include_model_answers: if True, include model_answer_v0/model_answer_v1 columns when
+            v0/v1 files are present in json_file_paths.
 
     Output schema:
     {
@@ -113,10 +115,21 @@ def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=No
         raise ValueError("json_file_paths cannot be empty")
 
     normalized_rows_per_model = []
+    split_tags_per_file = []
+
+    def _detect_split_tag(file_path):
+        path_lower = file_path.lower()
+        if "v0" in path_lower:
+            return "v0"
+        if "v1" in path_lower:
+            return "v1"
+        return None
 
     for file_path in json_file_paths:
         with open(file_path, "r") as f:
             payload = json.load(f)
+
+        split_tags_per_file.append(_detect_split_tag(file_path))
 
         judgments = payload.get("judgments")
         if judgments is None:
@@ -128,6 +141,7 @@ def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=No
             rows.append(
                 {
                     "row_id": row_id,
+                    "model_answer": item.get("model_answer"),
                     "criterion_1": item.get("criterion_1"),
                     "criterion_2": item.get("criterion_2"),
                     "criterion_3": item.get("criterion_3"),
@@ -146,11 +160,37 @@ def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=No
         if current_ids != base_ids:
             raise ValueError("Input judgment files do not align by id/index in the same order")
 
+    v0_answers = [None] * len(base_rows)
+    v1_answers = [None] * len(base_rows)
+
+    if include_model_answers:
+        for rows, split_tag in zip(normalized_rows_per_model, split_tags_per_file):
+            if split_tag not in {"v0", "v1"}:
+                continue
+
+            for i, row in enumerate(rows):
+                model_answer = row.get("model_answer")
+                if model_answer is None:
+                    continue
+
+                if split_tag == "v0" and v0_answers[i] is None:
+                    v0_answers[i] = model_answer
+                if split_tag == "v1" and v1_answers[i] is None:
+                    v1_answers[i] = model_answer
+
+    has_v0 = include_model_answers and any(tag == "v0" for tag in split_tags_per_file)
+    has_v1 = include_model_answers and any(tag == "v1" for tag in split_tags_per_file)
+
     aggregated_results = []
     for i, base_row in enumerate(base_rows):
         aggregated_row = {
             "id": base_row.get("row_id", i),
         }
+
+        if has_v0:
+            aggregated_row["model_answer_v0"] = v0_answers[i]
+        if has_v1:
+            aggregated_row["model_answer_v1"] = v1_answers[i]
 
         for model_name, model_rows in zip(model_names, normalized_rows_per_model):
             model_row = model_rows[i]
@@ -192,7 +232,7 @@ if __name__ == "__main__":
         "qwen3.5-397b-a17b_v1",
     ]
     compare_all_files = judgment_files
-    aggregate_criteria_by_model(compare_all_files, compare_all_names, "03_evaluates/output/compare_all_models.json")
+    aggregate_criteria_by_model(compare_all_files, compare_all_names, "03_evaluates/output/compare_all_models.json", include_model_answers=True)
 
     # for file in judgment_files:
     #     append_criteria_to_judgements_json(file)
