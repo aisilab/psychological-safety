@@ -1,4 +1,5 @@
 01_prompting/to_run.sh
 01_prompting/other
 01_prompting/results/ignore
+envs.env
 .vscode
