@@ -1,2 +1,8 @@
 01_prompting/to_run.sh
 01_prompting/results/
+checkpoints/
+envs.env
+.vscode/
+unsloth_compiled_cache/
+wandb/
+*/__pycache__/
