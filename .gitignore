@@ -3,6 +3,7 @@
 01_prompting/results/ignore
 03_evaluates/envs.env
 03_evaluates/output/completions*
+03_evaluates/output/validation
 */__pycache__
 */.DS_Store
 .DS_Store
