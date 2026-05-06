@@ -3,7 +3,9 @@ import os
 from dotenv import load_dotenv
 import json
 import random
+import time
 from openai import OpenAI
+from utils import append_criteria_to_judgements_json
 
 try:
     from tqdm import tqdm
@@ -15,6 +17,9 @@ from utils import split_reasoning_traces
 
 load_dotenv(os.getcwd() + '/03_evaluates/envs.env')
 CHAT_AI_TOKEN = os.getenv("CHAT_AI_TOKEN")
+CHAT_AI_TIMEOUT_SECONDS = float(os.getenv("CHAT_AI_TIMEOUT_SECONDS", "1000"))
+CHAT_AI_MAX_RETRIES = int(os.getenv("CHAT_AI_MAX_RETRIES", "50"))
+CHAT_AI_RETRY_BASE_SECONDS = float(os.getenv("CHAT_AI_RETRY_BASE_SECONDS", "1.0"))
 
 def save_json_response(response, filename = "03_evaluates/output/response.json"):
     with open(filename, 'w') as f:
@@ -85,7 +90,15 @@ def get_models():
 
     save_json_response(response)
 
-def create_chat_completion(model_id, messages, temperature=0.0, filename="03_evaluates/output/chat_completion_response.json", save_response=True, print_response=False):
+def create_chat_completion(
+    model_id,
+    messages,
+    temperature=0.1,
+    filename="03_evaluates/output/chat_completion_response.json",
+    save_response=True,
+    print_response=True,
+    timeout_seconds=None,
+):
     if not model_id:
         raise ValueError("model_id must be set for create_chat_completion")
 
@@ -102,19 +115,77 @@ def create_chat_completion(model_id, messages, temperature=0.0, filename="03_eva
         "temperature": temperature,
     }
 
-    response = requests.post(url, headers=headers, json=data, timeout=120)
+    request_timeout = CHAT_AI_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    max_attempts = max(1, CHAT_AI_MAX_RETRIES)
+    retriable_status_codes = {429, 500, 502, 503, 504}
+    last_error = None
 
-    if print_response:
-        print(response.status_code)
-    response_payload = response.json()
-    if print_response:
-        print(response_payload)
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = requests.post(url, headers=headers, json=data, timeout=request_timeout)
 
-    if filename and save_response:
-        save_json_response(response_payload, filename=filename)
+            if print_response:
+                print(response.status_code)
 
-    response.raise_for_status()
-    return response_payload
+            if response.status_code >= 400:
+                body_preview = (response.text or "").strip()[:500]
+                is_retriable = response.status_code in retriable_status_codes
+                error = requests.HTTPError(
+                    f"{response.status_code} error for url: {url}. "
+                    f"Response body (first 500 chars): {body_preview}"
+                )
+
+                if is_retriable and attempt < max_attempts:
+                    sleep_seconds = CHAT_AI_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+                    sleep_seconds += random.uniform(0, 0.3)
+                    if print_response:
+                        print(f"Transient HTTP {response.status_code}, retrying in {sleep_seconds:.2f}s (attempt {attempt}/{max_attempts})")
+                    time.sleep(sleep_seconds)
+                    continue
+
+                raise error
+
+            try:
+                response_payload = response.json()
+            except ValueError as exc:
+                body_preview = (response.text or "").strip()[:500]
+                is_retriable = response.status_code in retriable_status_codes or not body_preview
+                error = ValueError(
+                    f"Chat completion returned a non-JSON or empty response body. "
+                    f"Status={response.status_code}, body (first 500 chars): {body_preview}"
+                )
+                if is_retriable and attempt < max_attempts:
+                    sleep_seconds = CHAT_AI_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+                    sleep_seconds += random.uniform(0, 0.3)
+                    if print_response:
+                        print(f"Transient parse failure, retrying in {sleep_seconds:.2f}s (attempt {attempt}/{max_attempts})")
+                    time.sleep(sleep_seconds)
+                    continue
+                raise error from exc
+
+            if print_response:
+                print(response_payload)
+
+            if filename and save_response:
+                save_json_response(response_payload, filename=filename)
+
+            return response_payload
+
+        except (requests.Timeout, requests.ConnectionError, requests.RequestException) as exc:
+            last_error = exc
+            if attempt >= max_attempts:
+                break
+            sleep_seconds = CHAT_AI_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+            sleep_seconds += random.uniform(0, 0.3)
+            if print_response:
+                print(f"Request failed ({type(exc).__name__}), retrying in {sleep_seconds:.2f}s (attempt {attempt}/{max_attempts})")
+            time.sleep(sleep_seconds)
+
+    if last_error is not None:
+        raise RuntimeError(
+            f"Chat completion failed after {max_attempts} attempts."
+        ) from last_error
+    raise RuntimeError(f"Chat completion failed after {max_attempts} attempts.")
 
 def get_judge_reasoning_and_judgement(judge_response):
     judge_text = judge_response["choices"][0]["message"]["content"]
@@ -208,17 +279,103 @@ def select_data_to_test_judges(sample_per_cluster=5, random_seed=42):
 
     print(f"Saved paired selected responses to {output_path}")
 
+def validate_input_data(v0_path, v1_path):
+    """
+    Checks that model answers in v0 and v1 are properly paired by prompt and that there are no "stucked" responses.
+    If one stuck response is found remove it from both v0 and v1 to keep the pairing consistent.
+    """
+    with open(v0_path, "r") as f:
+        data_v0 = json.load(f)
+    with open(v1_path, "r") as f:
+        data_v1 = json.load(f)
 
-def judge_baseline(model_id, temperature, test = False):
-    if test:
+    results_v0 = data_v0.get("results", [])
+    results_v1 = data_v1.get("results", [])
+    if len(results_v0) != len(results_v1):
+        raise ValueError(
+            f"Mismatched number of raw responses between v0 and v1: "
+            f"{len(results_v0)} vs {len(results_v1)}"
+        )
+
+    cleaned_results_v0 = []
+    cleaned_results_v1 = []
+    stucked_v1 = 0
+    stucked_v0 = 0
+    stucked_both = 0
+
+    for idx, (item_v0, item_v1) in enumerate(zip(results_v0, results_v1)):
+        prompt_v0 = item_v0.get("prompt")
+        prompt_v1 = item_v1.get("prompt")
+        if prompt_v0 != prompt_v1:
+            raise ValueError(
+                f"Mismatched prompt at index {idx}: v0='{prompt_v0}' vs v1='{prompt_v1}'"
+            )
+        is_stucked_v1 = item_v1.get("stucked") == "true"
+        is_stucked_v0 = item_v0.get("stucked") == "true"
+
+        if is_stucked_v0 and is_stucked_v1:
+            stucked_both += 1
+        if is_stucked_v1 and not is_stucked_v0:
+            stucked_v1 += 1
+        if is_stucked_v0 and not is_stucked_v1:
+            stucked_v0 += 1
+        if is_stucked_v0 or is_stucked_v1:
+            continue
+
+        cleaned_results_v0.append(item_v0)
+        cleaned_results_v1.append(item_v1)
+
+    cleaned_v0 = dict(data_v0)
+    cleaned_v1 = dict(data_v1)
+    cleaned_v0["results"] = cleaned_results_v0
+    cleaned_v1["results"] = cleaned_results_v1
+
+    print(
+        f"Validated input data: {len(cleaned_results_v0)} paired responses "
+        f"(removed {stucked_v0 + stucked_v1 + stucked_both} pairs because at least one side was 'stucked').\n"
+        f"Stucked responses only in v0: {stucked_v0}, stucked responses only in v1: {stucked_v1}, stucked responses in both: {stucked_both}."
+    )
+
+    return cleaned_v0, cleaned_v1
+
+
+
+def judge_baseline(model_id, temperature, mode = "selected", limit=None):
+    if mode == "test":
         selected_response_path = "03_evaluates/output/test_requests/test_selected_responses.json"
-    else:
+    elif mode == "selected":
         selected_response_path = "03_evaluates/output/selected_responses.json"
+    elif mode == "full":
+        full_response_path_v0 = "01_prompting/results/svenharms_val_v0_latest_splitted_with_category.json"
+        full_response_path_v1 = "01_prompting/results/svenharms_val_v1_latest_splitted_with_category.json"
+        data_v0, data_v1 = validate_input_data(full_response_path_v0, full_response_path_v1)
 
-    with open(selected_response_path, 'r') as f:
-        data = json.load(f)
-        selected_responses_v1 = data["selected_responses_v1"]
-        selected_responses_v0 = data["selected_responses_v0"]
+        v0_by_prompt = {
+            item["prompt"]: item
+            for item in data_v0.get("results", [])
+            if item.get("stucked") != "true" and "prompt" in item
+        }
+        v1_by_prompt = {
+            item["prompt"]: item
+            for item in data_v1.get("results", [])
+            if item.get("stucked") != "true" and "prompt" in item
+        }
+
+        shared_prompts = sorted(set(v0_by_prompt).intersection(v1_by_prompt))
+        selected_responses_v0 = [v0_by_prompt[prompt] for prompt in shared_prompts]
+        selected_responses_v1 = [v1_by_prompt[prompt] for prompt in shared_prompts]
+    else:
+        raise ValueError(f"Unsupported mode '{mode}'. Expected one of: test, selected, full.")
+    
+    print(f"Loaded {len(selected_responses_v0)} responses for v0 and {len(selected_responses_v1)} responses for v1 in mode '{mode}'")
+    if limit is not None:
+        print(f"Limit is set to {limit}.")
+
+    if mode != "full":
+        with open(selected_response_path, 'r') as f:
+            data = json.load(f)
+            selected_responses_v1 = data["selected_responses_v1"]
+            selected_responses_v0 = data["selected_responses_v0"]
 
     with open("03_evaluates/CRITERIA_llm.md", 'r') as f:
         criteria = f.read()
@@ -239,6 +396,8 @@ def judge_baseline(model_id, temperature, test = False):
     for idx, (model_answer_v1, model_answer_v0) in enumerate(
         tqdm(paired_answers, total=len(paired_answers), desc="Judging responses")
     ):
+        if limit is not None and idx >= limit:
+            break
         prompt = selected_responses_v1[idx].get("prompt", "")
 
         messages_v1 = [
@@ -280,14 +439,14 @@ def judge_baseline(model_id, temperature, test = False):
                 judge_model_id,
                 messages_v1,
                 temperature=temperature,
-                filename=f"03_evaluates/output/completions_v1/{model_id}_{idx}_v1_judge_completion.json"
+                filename=f"03_evaluates/output/completions_v1/{model_id}_{idx}_v1_judge_completion_{mode}.json"
             )
 
             judge_response_v0 = create_chat_completion(
                 judge_model_id,
                 messages_v0,
                 temperature=temperature,
-                filename=f"03_evaluates/output/completions_v0/{model_id}_{idx}_v0_judge_completion.json"
+                filename=f"03_evaluates/output/completions_v0/{model_id}_{idx}_v0_judge_completion_{mode}.json"
             )
             
             reasoning_v1, judge_answer_v1 = get_judge_reasoning_and_judgement(judge_response_v1)
@@ -335,8 +494,8 @@ def judge_baseline(model_id, temperature, test = False):
                 "error": str(exc),
             })
 
-    judgements_v1_path = f"03_evaluates/output/{model_id}_judgements_v1.json"
-    judgements_v0_path = f"03_evaluates/output/{model_id}_judgements_v0.json"
+    judgements_v1_path = f"03_evaluates/output/{model_id}_judgements_v1_{mode}.json"
+    judgements_v0_path = f"03_evaluates/output/{model_id}_judgements_v0_{mode}.json"
 
     save_json_response(
         {
@@ -362,6 +521,68 @@ def judge_baseline(model_id, temperature, test = False):
     extract_markdown_judgements_from_json(json_filename=judgements_v0_path)
 
     return judgments_v0, judgments_v1
+
+def judge_single_response(model_id, prompt, model_answer, risk_category, risk_cluster, temperature=0.1):
+    # Run a single judge completion and persist results in the same schema as judge_baseline.
+    with open("03_evaluates/CRITERIA_llm.md", "r") as f:
+        criteria = f.read()
+
+    os.makedirs("03_evaluates/output/completions_single", exist_ok=True)
+
+    messages = [
+        {
+            "role": "system",
+            "content": f"{criteria}",
+        },
+        {
+            "role": "user",
+            "content": (
+                f"User Request:\n{prompt}\n\n"
+                f"Assistant Response:\n{model_answer}\n\n"
+                "Evaluate this assistant response now following the specified criteria and output format."
+            ),
+        },
+    ]
+
+    judgements_path = f"03_evaluates/output/{model_id}_judgements_single.json"
+    completion_path = f"03_evaluates/output/completions_single/{model_id}_single_judge_completion.json"
+
+    judge_response = create_chat_completion(
+        model_id,
+        messages,
+        temperature=temperature,
+        filename=completion_path,
+    )
+    reasoning, judge_answer = get_judge_reasoning_and_judgement(judge_response)
+    full_judge_output = judge_response["choices"][0]["message"]["content"]
+
+    judgments = [
+        {
+            "id": 0,
+            "prompt": prompt,
+            "model_answer": model_answer,
+            "full_judge_output": full_judge_output,
+            "reasoning": reasoning,
+            "judge_answer": judge_answer,
+            "risk cluster": risk_cluster,
+            "risk category": risk_category,
+        }
+    ]
+
+    save_json_response(
+        {
+            "judge_model_id": model_id,
+            "criteria_file": "03_evaluates/CRITERIA_llm.md",
+            "num_answers": 1,
+            "judgments": judgments,
+        },
+        filename=judgements_path,
+    )
+
+    append_criteria_to_judgements_json(json_filename=judgements_path, output_filename=judgements_path)
+    extract_markdown_judgements_from_json(json_filename=judgements_path)
+
+    return judgments[0]
     
 
 def test_completion(model_id):
@@ -392,23 +613,68 @@ def test_completion(model_id):
     create_chat_completion(model_id, messages, temperature=0.1, filename=output_file)
     # create_chat_completion_2(model_id, messages, temperature=1.0, filename=output_file)
 
-def main():
-    # get_models()
+def extract_failed_requests(json_filename):
+    with open(json_filename, 'r') as f:
+        payload = json.load(f)
 
-    # model_id = "qwen3-32b"
-    model_id = "qwen3.5-27b"
+    judgements = payload.get("judgments", [])
+    criteria_file = payload.get("criteria_file")
 
-    # model_id = "glm-4.7"
+    full_metadata_by_id = {}
+    if "_full" in json_filename:
+        full_response_path_v0 = "01_prompting/results/svenharms_val_v0_latest_splitted_with_category.json"
+        full_response_path_v1 = "01_prompting/results/svenharms_val_v1_latest_splitted_with_category.json"
+        data_v0, data_v1 = validate_input_data(full_response_path_v0, full_response_path_v1)
 
-    # model_id = "qwen3.5-397b-a17b"
+        v0_by_prompt = {
+            item["prompt"]: item
+            for item in data_v0.get("results", [])
+            if item.get("stucked") != "true" and "prompt" in item
+        }
+        v1_by_prompt = {
+            item["prompt"]: item
+            for item in data_v1.get("results", [])
+            if item.get("stucked") != "true" and "prompt" in item
+        }
+        shared_prompts = sorted(set(v0_by_prompt).intersection(v1_by_prompt))
+        selected_responses_v0 = [v0_by_prompt[prompt] for prompt in shared_prompts]
+        selected_responses_v1 = [v1_by_prompt[prompt] for prompt in shared_prompts]
 
-    # model_id = "mistral-large-3-675b-instruct-2512"
+        is_v1 = "_v1_" in json_filename
+        selected_responses = selected_responses_v1 if is_v1 else selected_responses_v0
 
-    # test_completion(model_id)
+        full_metadata_by_id = {
+            idx: {
+                "risk cluster": item.get("risk cluster"),
+                "risk category": item.get("risk category"),
+            }
+            for idx, item in enumerate(selected_responses)
+        }
 
-    # select_data_to_test_judges()
+    failed_requests = []
+    for item in judgements:
+        if item.get("error"):
+            req_id = item.get("id")
+            fallback_meta = full_metadata_by_id.get(req_id, {})
+            failed_requests.append({
+                "id": req_id,
+                "prompt": item.get("prompt"),
+                "model_answer": item.get("model_answer"),
+                "error": item.get("error"),
+                "risk cluster": item.get("risk cluster") or fallback_meta.get("risk cluster"),
+                "risk category": item.get("risk category") or fallback_meta.get("risk category"),
+                "criterion_1": item.get("criterion_1"),
+                "criterion_2": item.get("criterion_2"),
+                "criterion_3": item.get("criterion_3"),
+                "criterion_4": item.get("criterion_4"),
+                "criteria_file": criteria_file,
+            })
 
-    # judge_baseline(model_id=model_id, temperature=0.1, test=True)
+    return failed_requests
+
+
+def validate_judges():
+    select_data_to_test_judges()
 
     selected_judges = [
         "glm-4.7",
@@ -417,14 +683,321 @@ def main():
     ]
 
     for model_id in tqdm(selected_judges, desc="Judging models"):
-        judge_baseline(model_id=model_id, temperature=0.1, test=False)
+        judge_baseline(model_id=model_id, temperature=0.1, mode="selected")
+        judgements_v1 = f"03_evaluates/output/{model_id}_judgements_v1.json"
+        judgements_v0 = f"03_evaluates/output/{model_id}_judgements_v0.json"
+        append_criteria_to_judgements_json(json_filename=judgements_v1, output_filename=judgements_v1)
+        append_criteria_to_judgements_json(json_filename=judgements_v0, output_filename=judgements_v0)
+        extract_markdown_judgements_from_json(json_filename=judgements_v1)
+        extract_markdown_judgements_from_json(json_filename=judgements_v0)
+
+def run_judge_on_full_data(judge_model_id, temperature, limit=None):
+    judge_baseline(model_id=judge_model_id, temperature=temperature, mode="full", limit=limit)
+    judgements_v1 = f"03_evaluates/output/{judge_model_id}_judgements_v1_full.json"
+    judgements_v0 = f"03_evaluates/output/{judge_model_id}_judgements_v0_full.json"
+    append_criteria_to_judgements_json(json_filename=judgements_v1, output_filename=judgements_v1)
+    append_criteria_to_judgements_json(json_filename=judgements_v0, output_filename=judgements_v0)
+    extract_markdown_judgements_from_json(json_filename=judgements_v1)
+    extract_markdown_judgements_from_json(json_filename=judgements_v0)
+
+def rerun_judges_for_failed_http_requests(judge_model_id, temperature):
+    failed_requests_v1 = extract_failed_requests(f"03_evaluates/output/{judge_model_id}_judgements_v1_full.json")
+    failed_requests_v0 = extract_failed_requests(f"03_evaluates/output/{judge_model_id}_judgements_v0_full.json")
+
+    # print failed requests for manual inspection
+    print(f"Failed requests for v1 ({len(failed_requests_v1)}):")
+    for req in failed_requests_v1:
+        print(f"ID: {req['id']}, Prompt: {req['prompt']}, Error: {req['error']}")
+        print()
+    print(f"Failed requests for v0 ({len(failed_requests_v0)}):")
+    for req in failed_requests_v0:
+        print(f"ID: {req['id']}, Prompt: {req['prompt']}, Error: {req['error']}")
+        print()
     
-    # judgements_v1 = f"03_evaluates/output/{model_id}_judgements_v1.json"
-    # judgements_v0 = f"03_evaluates/output/{model_id}_judgements_v0.json"
-    # extract_markdown_judgements_from_json(json_filename=judgements_v1)
-    # extract_markdown_judgements_from_json(json_filename=judgements_v0)
+    print("\n=== Full preview of v1 requests ===")
+    for req in failed_requests_v1:
+        print(
+            f"\n[Preview v1] ID: {req.get('id')}\n"
+            f"Prompt:\n{req.get('prompt', '')}\n\n"
+            f"Model answer:\n{req.get('model_answer', '')}\n"
+        )
+
+    print("\n=== Full preview of v0 requests ===")
+    for req in failed_requests_v0:
+        print(
+            f"\n[Preview v0] ID: {req.get('id')}\n"
+            f"Prompt:\n{req.get('prompt', '')}\n\n"
+            f"Model answer:\n{req.get('model_answer', '')}\n"
+        )
+
+    input("Press Enter to send all requests...")
+
+    with open("03_evaluates/CRITERIA_llm.md", 'r') as f:
+        criteria = f.read()
+    
+    os.makedirs("03_evaluates/output/completions_v1", exist_ok=True)
+    os.makedirs("03_evaluates/output/completions_v0", exist_ok=True)
+
+    judgments_v1 = []
+    judgments_v0 = []
+
+    for req in tqdm(failed_requests_v1, desc="Retrying failed requests v1"):
+        prompt = req.get("prompt", "")
+        model_answer = req.get("model_answer", "")
+        req_id = req.get("id")
+        messages_v1 = [
+            {
+                "role": "system",
+                "content": f"{criteria}",
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"User Request:\n{prompt}\n\n"
+                    f"Assistant Response:\n{model_answer}\n\n"
+                    "Evaluate this assistant response now following the specified criteria and output format."
+                ),
+            },
+        ]
+        try:
+            judge_response_v1 = create_chat_completion(
+                judge_model_id,
+                messages_v1,
+                temperature=temperature,
+                filename=f"03_evaluates/output/completions_v1/{judge_model_id}_{req_id}_v1_judge_completion_retries.json",
+            )
+            reasoning_v1, judge_answer_v1 = get_judge_reasoning_and_judgement(judge_response_v1)
+            full_judge_output_v1 = judge_response_v1["choices"][0]["message"]["content"]
+            judgments_v1.append({
+                "id": req_id,
+                "prompt": prompt,
+                "model_answer": model_answer,
+                "full_judge_output": full_judge_output_v1,
+                "reasoning": reasoning_v1,
+                "judge_answer": judge_answer_v1,
+                "risk cluster": req.get("risk cluster", ""),
+                "risk category": req.get("risk category", ""),
+            })
+            print(f"Successfully retried request ID {req_id} for v1.")
+        except Exception as exc:
+            print(f"Failed again to process request ID {req_id} for v1. Error: {exc}")
+            judgments_v1.append({
+                "id": req_id,
+                "prompt": prompt,
+                "model_answer": model_answer,
+                "error": str(exc),
+                "risk cluster": req.get("risk cluster", ""),
+                "risk category": req.get("risk category", ""),
+                "criterion_1": req.get("criterion_1"),
+                "criterion_2": req.get("criterion_2"),
+                "criterion_3": req.get("criterion_3"),
+                "criterion_4": req.get("criterion_4"),
+            })
+
+    for req in tqdm(failed_requests_v0, desc="Retrying failed requests v0"):
+        prompt = req.get("prompt", "")
+        model_answer = req.get("model_answer", "")
+        req_id = req.get("id")
+        messages_v0 = [
+            {
+                "role": "system",
+                "content": f"{criteria}",
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"User Request:\n{prompt}\n\n"
+                    f"Assistant Response:\n{model_answer}\n\n"
+                    "Evaluate this assistant response now following the specified criteria and output format."
+                ),
+            },
+        ]
+        try:
+            judge_response_v0 = create_chat_completion(
+                judge_model_id,
+                messages_v0,
+                temperature=temperature,
+                filename=f"03_evaluates/output/completions_v0/{judge_model_id}_{req_id}_v0_judge_completion_retries.json",
+            )
+            reasoning_v0, judge_answer_v0 = get_judge_reasoning_and_judgement(judge_response_v0)
+            full_judge_output_v0 = judge_response_v0["choices"][0]["message"]["content"]
+            judgments_v0.append({
+                "id": req_id,
+                "prompt": prompt,
+                "model_answer": model_answer,
+                "full_judge_output": full_judge_output_v0,
+                "reasoning": reasoning_v0,
+                "judge_answer": judge_answer_v0,
+                "risk cluster": req.get("risk cluster", ""),
+                "risk category": req.get("risk category", ""),
+            })
+            print(f"Successfully retried request ID {req_id} for v0.")
+        except Exception as exc:
+            print(f"Failed again to process request ID {req_id} for v0. Error: {exc}")
+            judgments_v0.append({
+                "id": req_id,
+                "prompt": prompt,
+                "model_answer": model_answer,
+                "error": str(exc),
+                "risk cluster": req.get("risk cluster", ""),
+                "risk category": req.get("risk category", ""),
+                "criterion_1": req.get("criterion_1"),
+                "criterion_2": req.get("criterion_2"),
+                "criterion_3": req.get("criterion_3"),
+                "criterion_4": req.get("criterion_4"),
+            })
+
+    judgements_v1_path = f"03_evaluates/output/{judge_model_id}_judgements_v1_retries.json"
+    judgements_v0_path = f"03_evaluates/output/{judge_model_id}_judgements_v0_retries.json"
+
+    save_json_response(
+        {
+            "judge_model_id": judge_model_id,
+            "criteria_file": "03_evaluates/CRITERIA_llm.md",
+            "num_answers": len(failed_requests_v1),
+            "judgments": judgments_v1,
+        },
+        filename=judgements_v1_path,
+    )
+
+    save_json_response(
+        {
+            "judge_model_id": judge_model_id,
+            "criteria_file": "03_evaluates/CRITERIA_llm.md",
+            "num_answers": len(failed_requests_v0),
+            "judgments": judgments_v0,
+        },
+        filename=judgements_v0_path,
+    )
+
+    append_criteria_to_judgements_json(json_filename=judgements_v1_path, output_filename=judgements_v1_path)
+    append_criteria_to_judgements_json(json_filename=judgements_v0_path, output_filename=judgements_v0_path)
+
+    extract_markdown_judgements_from_json(json_filename=judgements_v1_path)
+    extract_markdown_judgements_from_json(json_filename=judgements_v0_path)
+
+    return judgments_v0, judgments_v1
+
+# TODO remove this temp function
+def rerun_judges_for_v0_requests_from_file(
+    judge_model_id,
+    temperature,
+    requests_path="03_evaluates/output/temp_v0_retries.json",
+):
+    with open(requests_path, "r") as f:
+        loaded = json.load(f)
+
+    if isinstance(loaded, dict):
+        v0_requests = loaded.get("judgments", [])
+    else:
+        v0_requests = loaded
+
+    print(f"Loaded {len(v0_requests)} v0 requests from {requests_path}.")
+    print("\n=== Full preview of selected v0 requests ===")
+    for req in v0_requests:
+        print(
+            f"\n[Preview v0] ID: {req.get('id')}\n"
+            f"Prompt:\n{req.get('prompt', '')}\n\n"
+            f"Model answer:\n{req.get('model_answer', '')}\n"
+        )
+    input("Press Enter to send all selected v0 requests...")
+
+    with open("03_evaluates/CRITERIA_llm.md", "r") as f:
+        criteria = f.read()
+
+    os.makedirs("03_evaluates/output/completions_v0", exist_ok=True)
+    judgments_v0 = []
+
+    for req in tqdm(v0_requests, desc="Retrying selected v0 requests"):
+        prompt = req.get("prompt", "")
+        model_answer = req.get("model_answer", "")
+        req_id = req.get("id")
+        messages_v0 = [
+            {
+                "role": "system",
+                "content": f"{criteria}",
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"User Request:\n{prompt}\n\n"
+                    f"Assistant Response:\n{model_answer}\n\n"
+                    "Evaluate this assistant response now following the specified criteria and output format."
+                ),
+            },
+        ]
+
+        try:
+            judge_response_v0 = create_chat_completion(
+                judge_model_id,
+                messages_v0,
+                temperature=temperature,
+                filename=f"03_evaluates/output/completions_v0/{judge_model_id}_{req_id}_v0_judge_completion_selected_retries.json",
+            )
+            reasoning_v0, judge_answer_v0 = get_judge_reasoning_and_judgement(judge_response_v0)
+            full_judge_output_v0 = judge_response_v0["choices"][0]["message"]["content"]
+            judgments_v0.append({
+                "id": req_id,
+                "prompt": prompt,
+                "model_answer": model_answer,
+                "full_judge_output": full_judge_output_v0,
+                "reasoning": reasoning_v0,
+                "judge_answer": judge_answer_v0,
+                "risk cluster": req.get("risk cluster", ""),
+                "risk category": req.get("risk category", ""),
+            })
+            print(f"Successfully retried request ID {req_id} for v0.")
+        except Exception as exc:
+            print(f"Failed again to process request ID {req_id} for v0. Error: {exc}")
+            judgments_v0.append({
+                "id": req_id,
+                "prompt": prompt,
+                "model_answer": model_answer,
+                "error": str(exc),
+                "risk cluster": req.get("risk cluster", ""),
+                "risk category": req.get("risk category", ""),
+                "criterion_1": req.get("criterion_1"),
+                "criterion_2": req.get("criterion_2"),
+                "criterion_3": req.get("criterion_3"),
+                "criterion_4": req.get("criterion_4"),
+            })
+
+    output_path = f"03_evaluates/output/{judge_model_id}_judgements_v0_selected_retries.json"
+    save_json_response(
+        {
+            "judge_model_id": judge_model_id,
+            "criteria_file": "03_evaluates/CRITERIA_llm.md",
+            "num_answers": len(v0_requests),
+            "judgments": judgments_v0,
+        },
+        filename=output_path,
+    )
+
+    append_criteria_to_judgements_json(json_filename=output_path, output_filename=output_path)
+    extract_markdown_judgements_from_json(json_filename=output_path)
+
+    return judgments_v0
 
 
+def run_single_judge_request():
+    model_id = "qwen3.5-397b-a17b"
+    prompt = ""
+    model_answer = ""
+    risk_category = ""
+    risk_cluster = ""
+
+    judge_single_response(model_id, prompt, model_answer, risk_category, risk_cluster, temperature=0.1)
+
+
+    
+def main():
+    judge_model_id = "qwen3.5-397b-a17b"
+    # run_judge_on_full_data(judge_model_id="qwen3.5-397b-a17b", temperature=0.1, limit=None)
+    # rerun_judges_for_failed_http_requests(judge_model_id=judge_model_id, temperature=0.1)
+
+    rerun_judges_for_v0_requests_from_file(judge_model_id=judge_model_id, temperature=0.1)
+
+    
 
 
 if __name__ == "__main__":

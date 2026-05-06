@@ -4,6 +4,7 @@ import json
 import statistics
 import os
 import random
+from scipy.stats import spearmanr, pearsonr
 
 def split_reasoning_traces(text: str, reasoning_token: str = "</think>") -> Tuple[str|None, str]:
     if reasoning_token in text:
@@ -144,7 +145,10 @@ def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=No
             rows.append(
                 {
                     "row_id": row_id,
+                    "prompt": item.get("prompt"),
                     "model_answer": item.get("model_answer"),
+                    "risk_category": item.get("risk_category"),
+                    "risk_cluster": item.get("risk_cluster"),
                     "criterion_1": item.get("criterion_1"),
                     "criterion_2": item.get("criterion_2"),
                     "criterion_3": item.get("criterion_3"),
@@ -161,7 +165,13 @@ def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=No
     for rows in normalized_rows_per_model[1:]:
         current_ids = [row["row_id"] for row in rows]
         if current_ids != base_ids:
-            raise ValueError("Input judgment files do not align by id/index in the same order")
+            # find mismatched indices for better error message
+            print(f"len base_rows: {len(base_rows)}, len current_rows: {len(rows)}")
+            missing_indices_in_base = [i for i, row in enumerate(rows) if row["row_id"] not in base_ids]
+            missing_indices_in_current = [i for i, row in enumerate(base_rows) if row["row_id"] not in current_ids]
+            print(f"Missing indices in base: {missing_indices_in_base}")
+            print(f"Missing indices in current: {missing_indices_in_current}")
+            raise ValueError(f"Input judgment files do not align by id/index in the same order.")
 
     v0_answers = [None] * len(base_rows)
     v1_answers = [None] * len(base_rows)
@@ -188,6 +198,7 @@ def aggregate_criteria_by_model(json_file_paths, model_names, output_filename=No
     for i, base_row in enumerate(base_rows):
         aggregated_row = {
             "id": base_row.get("row_id", i),
+            "prompt": base_row.get("prompt"),
         }
 
         if has_v0:
@@ -317,6 +328,25 @@ def compute_and_print_judge_metrics(
     def _fmt(number):
         return "n/a" if number is None else f"{number:.4f}"
 
+    def _pct_change(v0_value, v1_value):
+        if v0_value is None or v1_value is None:
+            return {"change_pct": None, "change_abs": None, "direction": "n/a"}
+
+        delta = v1_value - v0_value
+        if delta > 0:
+            direction = "improvement"
+        elif delta < 0:
+            direction = "deterioration"
+        else:
+            direction = "no_change"
+
+        if v0_value == 0:
+            change_pct = 0.0 if delta == 0 else None
+        else:
+            change_pct = (delta / abs(v0_value)) * 100.0
+
+        return {"change_pct": change_pct, "change_abs": delta, "direction": direction}
+
     def _judge_sort_key(name):
         priority = payload.get("models", [])
         for i, model_name in enumerate(priority):
@@ -362,6 +392,155 @@ def compute_and_print_judge_metrics(
                     f"      {criterion_key}: yes_rate={_fmt(yes_rate)} ({yes_rate_pct}), "
                     f"std_dev={_fmt(bool_stats['std_dev'])}, n={bool_stats['n']}"
                 )
+
+        metrics[judge]["delta_v0_to_v1"] = {"scalar": {}, "boolean": {}}
+        print("  Change (v0 -> v1)")
+
+        print("    Scalar criteria")
+        for criterion in sorted(scalar_criteria):
+            criterion_key = f"criterion_{criterion}"
+            v0_mean = metrics[judge]["v0"]["scalar"][criterion_key]["mean"]
+            v1_mean = metrics[judge]["v1"]["scalar"][criterion_key]["mean"]
+            change = _pct_change(v0_mean, v1_mean)
+            metrics[judge]["delta_v0_to_v1"]["scalar"][criterion_key] = change
+
+            change_pct_text = "n/a" if change["change_pct"] is None else f"{change['change_pct']:+.2f}%"
+            print(f"      {criterion_key}: {change['direction']} ({change_pct_text})")
+
+        print("    Boolean criteria")
+        for criterion in sorted(boolean_criteria):
+            criterion_key = f"criterion_{criterion}"
+            v0_yes_rate = metrics[judge]["v0"]["boolean"][criterion_key]["yes_rate"]
+            v1_yes_rate = metrics[judge]["v1"]["boolean"][criterion_key]["yes_rate"]
+            change = _pct_change(v0_yes_rate, v1_yes_rate)
+            metrics[judge]["delta_v0_to_v1"]["boolean"][criterion_key] = change
+
+            change_pct_text = "n/a" if change["change_pct"] is None else f"{change['change_pct']:+.2f}%"
+            print(f"      {criterion_key}: {change['direction']} ({change_pct_text})")
+
+    return metrics
+
+
+def compute_and_print_human_metrics(
+    json_filename,
+    scalar_criteria=(2, 4),
+    boolean_criteria=(1, 3),
+):
+    """
+    Compute and print overall and per-version human metrics from the annotated responses file.
+    Works with both the original annotated and the merged annotated files.
+    """
+    with open(json_filename, "r") as f:
+        payload = json.load(f)
+
+    if "rows" in payload:
+        rows = payload["rows"]
+    elif "paired_responses" in payload:
+        rows = []
+        for pair in payload["paired_responses"]:
+            if "a" in pair: rows.append(pair["a"])
+            if "b" in pair: rows.append(pair["b"])
+    else:
+        rows = []
+
+    criteria_to_track = set(scalar_criteria).union(boolean_criteria)
+
+    def _to_float(value):
+        if value is None or isinstance(value, bool): return None
+        if isinstance(value, (int, float)): return float(value)
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped: return None
+            try: return float(stripped)
+            except ValueError: return None
+        return None
+
+    def _to_binary(value):
+        if isinstance(value, bool): return 1.0 if value else 0.0
+        if isinstance(value, (int, float)):
+            if value in (0, 1): return float(value)
+            return None
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"yes", "true", "1"}: return 1.0
+            if normalized in {"no", "false", "0"}: return 0.0
+        return None
+
+    values_by_version = {
+        "v0": {f"criterion_{c}": [] for c in sorted(criteria_to_track)},
+        "v1": {f"criterion_{c}": [] for c in sorted(criteria_to_track)},
+        "overall": {f"criterion_{c}": [] for c in sorted(criteria_to_track)},
+    }
+
+    for row in rows:
+        version = row.get("source_split", "overall")
+        
+        for criterion in criteria_to_track:
+            val = row.get(f"criteria_{criterion}", row.get(f"criterion_{criterion}"))
+            criterion_key = f"criterion_{criterion}"
+            
+            if criterion in scalar_criteria:
+                numeric_value = _to_float(val)
+                if numeric_value is not None:
+                    values_by_version["overall"][criterion_key].append(numeric_value)
+                    if version in ("v0", "v1"):
+                        values_by_version[version][criterion_key].append(numeric_value)
+
+            if criterion in boolean_criteria:
+                binary_value = _to_binary(val)
+                if binary_value is not None:
+                    values_by_version["overall"][criterion_key].append(binary_value)
+                    if version in ("v0", "v1"):
+                        values_by_version[version][criterion_key].append(binary_value)
+
+    def _stats(values):
+        if not values:
+            return {"mean": None, "std_dev": None, "n": 0}
+        return {
+            "mean": statistics.mean(values),
+            "std_dev": statistics.pstdev(values),
+            "n": len(values),
+        }
+
+    def _fmt(number):
+        return "n/a" if number is None else f"{number:.4f}"
+
+    metrics = {}
+    print(f"Metric summary from: {json_filename} (Human)")
+    
+    for version in ("overall", "v0", "v1"):
+        if version in ("v0", "v1") and all(len(v) == 0 for v in values_by_version[version].values()):
+            continue
+            
+        metrics[version] = {"scalar": {}, "boolean": {}}
+        print(f"\n  Version: {version}")
+        print("    Scalar criteria")
+
+        for criterion in sorted(scalar_criteria):
+            criterion_key = f"criterion_{criterion}"
+            scalar_stats = _stats(values_by_version[version][criterion_key])
+            metrics[version]["scalar"][criterion_key] = scalar_stats
+            print(
+                f"      {criterion_key}: mean={_fmt(scalar_stats['mean'])}, "
+                f"std_dev={_fmt(scalar_stats['std_dev'])}, n={scalar_stats['n']}"
+            )
+
+        print("    Boolean criteria")
+        for criterion in sorted(boolean_criteria):
+            criterion_key = f"criterion_{criterion}"
+            bool_stats = _stats(values_by_version[version][criterion_key])
+            yes_rate = bool_stats["mean"]
+            metrics[version]["boolean"][criterion_key] = {
+                "yes_rate": yes_rate,
+                "std_dev": bool_stats["std_dev"],
+                "n": bool_stats["n"],
+            }
+
+            yes_rate_pct = "n/a" if yes_rate is None else f"{yes_rate * 100:.2f}%"
+            print(
+                f"      {criterion_key}: yes_rate={_fmt(yes_rate)} ({yes_rate_pct}), "
+                f"std_dev={_fmt(bool_stats['std_dev'])}, n={bool_stats['n']}"
+            )
 
     return metrics
 
@@ -531,7 +710,166 @@ def merge_annotator_with_trace(annotator_path, trace_path, output_path=None):
     }
 
 
-if __name__ == "__main__":
+def compute_human_judge_correlation(all_judgements_path, annotation_path, output_path=None):
+    """
+    Calculate the correlation between model judgments and human judgments.
+    """
+    import math
+
+    def _to_numeric(val):
+        if val is None:
+            return None
+        if isinstance(val, (int, float)):
+            return float(val)
+        if isinstance(val, bool):
+            return 1.0 if val else 0.0
+        if isinstance(val, str):
+            v_lower = val.strip().lower()
+            if v_lower in {"yes", "true", "1"}:
+                return 1.0
+            if v_lower in {"no", "false", "0"}:
+                return 0.0
+            try:
+                return float(v_lower)
+            except ValueError:
+                return None
+        return None
+
+    with open(all_judgements_path, "r") as f:
+        compare_data = json.load(f)
+    
+    with open(annotation_path, "r") as f:
+        annotated_data = json.load(f)
+
+    # Build human ground truth map
+    # Key: (prompt, split, criterion)
+    human_gt = {}
+    for row in annotated_data.get("rows", []):
+        prompt = row.get("full_example", {}).get("prompt", "").strip()
+        split = row.get("source_split")
+        
+        for i in range(1, 5):
+            crit_val = _to_numeric(row.get(f"criteria_{i}"))
+            if crit_val is not None:
+                human_gt[(prompt, split, i)] = crit_val
+
+    models = compare_data.get("models", [])
+    base_models = list(set([m.replace("_v0", "").replace("_v1", "") for m in models]))
+    all_keys = models + [f"{bm}_combined" for bm in base_models]
+
+    # Re-map model results
+    # dict: model -> criterion -> list of (human_val, model_val)
+    correlations_data = {
+        key: {
+            "overall": {"x": [], "y": []},
+            **{i: {"x": [], "y": []} for i in range(1, 5)}
+        }
+        for key in all_keys
+    }
+
+    for res in compare_data.get("results", []):
+        prompt = res.get("prompt", "").strip()
+        
+        for model in models:
+            # Check if this is a v0 or v1 model to match the human split
+            split = "v1" if "_v1" in model else "v0"
+            base_model = model.replace("_v0", "").replace("_v1", "")
+            combined_key = f"{base_model}_combined"
+            
+            for i in range(1, 5):
+                model_key = f"{model}_criterion_{i}"
+                model_val = _to_numeric(res.get(model_key))
+                human_val = human_gt.get((prompt, split, i))
+                
+                if model_val is not None and human_val is not None:
+                    # Append strictly for the version specific key
+                    correlations_data[model][i]["x"].append(human_val)
+                    correlations_data[model][i]["y"].append(model_val)
+                    correlations_data[model]["overall"]["x"].append(human_val)
+                    correlations_data[model]["overall"]["y"].append(model_val)
+                    
+                    # Append for the combined model key (v0 + v1)
+                    correlations_data[combined_key][i]["x"].append(human_val)
+                    correlations_data[combined_key][i]["y"].append(model_val)
+                    correlations_data[combined_key]["overall"]["x"].append(human_val)
+                    correlations_data[combined_key]["overall"]["y"].append(model_val)
+
+    def safe_pearsonr(x, y):
+        if len(x) < 2: 
+            return (0.0, 1.0)
+        try:
+            corr, p_val = pearsonr(x, y)
+            if math.isnan(corr):
+                return (0.0, 1.0)
+            return (corr, p_val)
+        except (ValueError, Exception):
+            return (0.0, 1.0)
+
+    def safe_spearmanr(x, y):
+        if len(x) < 2: 
+            return (0.0, 1.0)
+        try:
+            corr, p_val = spearmanr(x, y)
+            if math.isnan(corr):
+                return (0.0, 1.0)
+            return (corr, p_val)
+        except (ValueError, Exception):
+            return (0.0, 1.0)
+
+    def safe_agreement(x, y):
+        if len(x) == 0:
+            return 0.0
+        return sum(1 for a, b in zip(x, y) if a == b) / len(x)
+
+    def safe_cohen_kappa(x, y):
+        if len(x) < 2:
+            return 0.0
+        try:
+            from sklearn.metrics import cohen_kappa_score
+            kappa = cohen_kappa_score(x, y)
+            if math.isnan(kappa):
+                return 0.0
+            return kappa
+        except (ValueError, ImportError, Exception):
+            return 0.0
+
+    output_metrics = {}
+    for key in sorted(all_keys):
+        output_metrics[key] = {}
+        for i in range(1, 5):
+            x = correlations_data[key][i]["x"]
+            y = correlations_data[key][i]["y"]
+            output_metrics[key][f"criterion_{i}"] = {
+                "pearson_corr": safe_pearsonr(x, y),
+                "spearman_corr": safe_spearmanr(x, y),
+                "agreement": safe_agreement(x, y),
+                "cohen_kappa": safe_cohen_kappa(x, y)
+            }
+            if i == 4:
+                print(f"Metrics for {key} criterion_{i}: {output_metrics[key][f'criterion_{i}']} (n={len(x)})")
+                print(f"HUM: {x}")
+                print(f"MOD: {y}")
+                print("------")
+        
+        x_all = correlations_data[key]["overall"]["x"]
+        y_all = correlations_data[key]["overall"]["y"]
+        output_metrics[key]["overall"] = {
+            "pearson_corr": safe_pearsonr(x_all, y_all),
+            "spearman_corr": safe_spearmanr(x_all, y_all),
+            "agreement": safe_agreement(x_all, y_all),
+            "cohen_kappa": safe_cohen_kappa(x_all, y_all)
+        }
+
+    print("Pearson Correlation, Spearman Correlation, Agreement, and Cohen's Kappa between Human and Judges:")
+    print(json.dumps(output_metrics, indent=4))
+    
+    if output_path is not None:
+        with open(output_path, "w") as f:
+            json.dump(output_metrics, f, indent=4)
+            
+    return output_metrics
+
+def calculate_metrics_for_judge_validation():
     judgment_files = [
         "03_evaluates/output/glm-4.7_judgements_v0.json",
         "03_evaluates/output/glm-4.7_judgements_v1.json",
@@ -551,43 +889,51 @@ if __name__ == "__main__":
     ]
     compare_all_files = judgment_files
     compare_all_output = "03_evaluates/output/compare_all_judges.json"
-    # aggregate_criteria_by_model(compare_all_files, compare_all_names, compare_all_output, include_model_answers=True)
-    
-    # compute_and_print_judge_metrics(compare_all_output)
 
+    aggregate_criteria_by_model(compare_all_files, compare_all_names, compare_all_output, include_model_answers=True)
+    compute_and_print_judge_metrics(compare_all_output)
+
+def calculate_metrics_for_judge_full_outputs():
+    judgment_files = [
+        "03_evaluates/output/qwen3.5-397b-a17b_judgements_v0_full.json",
+        "03_evaluates/output/qwen3.5-397b-a17b_judgements_v1_full.json",
+    ]
+
+    compare_all_names = [
+        "qwen3.5-397b-a17b_v0",
+        "qwen3.5-397b-a17b_v1",
+    ]
+    compare_all_files = judgment_files
+    compare_all_output = "03_evaluates/output/compare_all_judges_qwen3.5_full.json"
+
+    aggregate_criteria_by_model(compare_all_files, compare_all_names, compare_all_output, include_model_answers=True)
+    compute_and_print_judge_metrics(compare_all_output)
+    
+def generate_annotation_set():
     selected_answers_path = "03_evaluates/output/selected_responses.json"
 
     create_annotator_set(selected_answers_path)
 
+
+def calculate_metrics_for_human_validation():
+    compare_all_output = "03_evaluates/output/compare_all_judges.json"
+
     merge_annotator_with_trace(
-        annotator_path="03_evaluates/output/selected_responses_annotator.json",
+        annotator_path="03_evaluates/output/annotated_responses.json",
         trace_path="03_evaluates/output/selected_responses_annotator_trace.json",
-        output_path="03_evaluates/output/selected_responses_annotator_merged.json",
+        output_path="03_evaluates/output/annotated_responses_merged.json",
     )
 
-    # for file in judgment_files:
-    #     append_criteria_to_judgements_json(file)
+    compute_and_print_human_metrics("03_evaluates/output/annotated_responses_merged.json")
 
-    # compare_v_glm = [
-    #     "03_evaluates/output/glm-4.7_judgements_v0.json",
-    #     "03_evaluates/output/glm-4.7_judgements_v1.json",
-    # ]
-    # compare_v_glm_names = ["glm-4.7_v0", "glm-4.7_v1"]
-    # aggregate_criteria_by_model(compare_v_glm, compare_v_glm_names, "03_evaluates/output/compare_v_glm-4.7.json")
+    compute_human_judge_correlation(
+        all_judgements_path=compare_all_output,
+        annotation_path="03_evaluates/output/annotated_responses_merged.json",
+        output_path="03_evaluates/output/human_judge_correlation.json",
+    )
 
+def main():
+    calculate_metrics_for_judge_full_outputs()
 
-    # compare_v_mistral = [
-    #     "03_evaluates/output/mistral-large-3-675b-instruct-2512_judgements_v0.json",
-    #     "03_evaluates/output/mistral-large-3-675b-instruct-2512_judgements_v1.json",
-    # ] 
-    # compare_v_mistral_names = ["mistral-large-3-675b-instruct_v0", "mistral-large-3-675b-instruct_v1"]
-    # aggregate_criteria_by_model(compare_v_mistral, compare_v_mistral_names, "03_evaluates/output/compare_v_mistral-large-3-675b-instruct.json")
-
-
-    # compare_v_qwen = [
-    #     "03_evaluates/output/qwen3.5-397b-a17b_judgements_v0.json",
-    #     "03_evaluates/output/qwen3.5-397b-a17b_judgements_v1.json",
-    # ]
-    # compare_v_qwen_names = ["qwen3.5-397b-a17b_v0", "qwen3.5-397b-a17b_v1"]
-    # aggregate_criteria_by_model(compare_v_qwen, compare_v_qwen_names, "03_evaluates/output/compare_v_qwen3.5-397b-a17b.json")
-
+if __name__ == "__main__":
+    main()
