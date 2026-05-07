@@ -1,7 +1,6 @@
 01_prompting/to_run.sh
 01_prompting/other
 01_prompting/results/ignore
-01_prompting/results/lm_harness/
 envs.env
 */__pycache__
 .vscode/
@@ -10,3 +9,4 @@ wandb/
 checkpoints/
 */__pycache__/
 01_prompting/run_benchmark_vllm_api.py
+01_prompting/results/lm_harness/
