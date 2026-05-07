@@ -96,7 +96,7 @@ def create_chat_completion(
     temperature=0.1,
     filename="03_evaluates/output/chat_completion_response.json",
     save_response=True,
-    print_response=True,
+    print_response=False,
     timeout_seconds=None,
 ):
     if not model_id:
@@ -138,8 +138,7 @@ def create_chat_completion(
                 if is_retriable and attempt < max_attempts:
                     sleep_seconds = CHAT_AI_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
                     sleep_seconds += random.uniform(0, 0.3)
-                    if print_response:
-                        print(f"Transient HTTP {response.status_code}, retrying in {sleep_seconds:.2f}s (attempt {attempt}/{max_attempts})")
+                    print(f"Transient HTTP {response.status_code}, retrying in {sleep_seconds:.2f}s (attempt {attempt}/{max_attempts})")
                     time.sleep(sleep_seconds)
                     continue
 
@@ -157,8 +156,7 @@ def create_chat_completion(
                 if is_retriable and attempt < max_attempts:
                     sleep_seconds = CHAT_AI_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
                     sleep_seconds += random.uniform(0, 0.3)
-                    if print_response:
-                        print(f"Transient parse failure, retrying in {sleep_seconds:.2f}s (attempt {attempt}/{max_attempts})")
+                    print(f"Transient parse failure, retrying in {sleep_seconds:.2f}s (attempt {attempt}/{max_attempts})")
                     time.sleep(sleep_seconds)
                     continue
                 raise error from exc
@@ -177,8 +175,7 @@ def create_chat_completion(
                 break
             sleep_seconds = CHAT_AI_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
             sleep_seconds += random.uniform(0, 0.3)
-            if print_response:
-                print(f"Request failed ({type(exc).__name__}), retrying in {sleep_seconds:.2f}s (attempt {attempt}/{max_attempts})")
+            print(f"Request failed ({type(exc).__name__}), retrying in {sleep_seconds:.2f}s (attempt {attempt}/{max_attempts})")
             time.sleep(sleep_seconds)
 
     if last_error is not None:
@@ -341,6 +338,9 @@ def validate_input_data(v0_path, v1_path):
 
 
 def judge_baseline(model_id, temperature, mode = "selected", limit=None):
+    os.makedirs("03_evaluates/output/completions_v0", exist_ok=True)
+    os.makedirs("03_evaluates/output/completions_v1", exist_ok=True)
+
     if mode == "test":
         selected_response_path = "03_evaluates/output/test_requests/test_selected_responses.json"
     elif mode == "selected":
@@ -348,6 +348,10 @@ def judge_baseline(model_id, temperature, mode = "selected", limit=None):
     elif mode == "full":
         full_response_path_v0 = "01_prompting/results/svenharms_val_v0_latest_splitted_with_category.json"
         full_response_path_v1 = "01_prompting/results/svenharms_val_v1_latest_splitted_with_category.json"
+        data_v0, data_v1 = validate_input_data(full_response_path_v0, full_response_path_v1)
+    elif mode == "sft":
+        full_response_path_v0 = "01_prompting/results/svenharms_val_v0_sft_splitted_with_category.json"
+        full_response_path_v1 = "01_prompting/results/svenharms_val_v1_sft_splitted_with_category.json"
         data_v0, data_v1 = validate_input_data(full_response_path_v0, full_response_path_v1)
 
         v0_by_prompt = {
@@ -365,13 +369,13 @@ def judge_baseline(model_id, temperature, mode = "selected", limit=None):
         selected_responses_v0 = [v0_by_prompt[prompt] for prompt in shared_prompts]
         selected_responses_v1 = [v1_by_prompt[prompt] for prompt in shared_prompts]
     else:
-        raise ValueError(f"Unsupported mode '{mode}'. Expected one of: test, selected, full.")
+        raise ValueError(f"Unsupported mode '{mode}'.")
     
     print(f"Loaded {len(selected_responses_v0)} responses for v0 and {len(selected_responses_v1)} responses for v1 in mode '{mode}'")
     if limit is not None:
         print(f"Limit is set to {limit}.")
 
-    if mode != "full":
+    if mode not in ["full", "sft"]:
         with open(selected_response_path, 'r') as f:
             data = json.load(f)
             selected_responses_v1 = data["selected_responses_v1"]
@@ -700,6 +704,15 @@ def run_judge_on_full_data(judge_model_id, temperature, limit=None):
     extract_markdown_judgements_from_json(json_filename=judgements_v1)
     extract_markdown_judgements_from_json(json_filename=judgements_v0)
 
+def run_judge_on_full_data_sft(judge_model_id, temperature, limit=None):
+    judge_baseline(model_id=judge_model_id, temperature=temperature, mode="sft", limit=limit)
+    judgements_v1 = f"03_evaluates/output/{judge_model_id}_judgements_v1_sft.json"
+    judgements_v0 = f"03_evaluates/output/{judge_model_id}_judgements_v0_sft.json"
+    append_criteria_to_judgements_json(json_filename=judgements_v1, output_filename=judgements_v1)
+    append_criteria_to_judgements_json(json_filename=judgements_v0, output_filename=judgements_v0)
+    extract_markdown_judgements_from_json(json_filename=judgements_v1)
+    extract_markdown_judgements_from_json(json_filename=judgements_v0)
+
 def rerun_judges_for_failed_http_requests(judge_model_id, temperature):
     failed_requests_v1 = extract_failed_requests(f"03_evaluates/output/{judge_model_id}_judgements_v1_full.json")
     failed_requests_v0 = extract_failed_requests(f"03_evaluates/output/{judge_model_id}_judgements_v0_full.json")
@@ -992,10 +1005,13 @@ def run_single_judge_request():
     
 def main():
     judge_model_id = "qwen3.5-397b-a17b"
-    # run_judge_on_full_data(judge_model_id="qwen3.5-397b-a17b", temperature=0.1, limit=None)
+    # run_judge_on_full_data(judge_model_id=judge_model_id, temperature=0.1, limit=None)
+
+    run_judge_on_full_data_sft(judge_model_id=judge_model_id, temperature=0.1, limit=None)
+
     # rerun_judges_for_failed_http_requests(judge_model_id=judge_model_id, temperature=0.1)
 
-    rerun_judges_for_v0_requests_from_file(judge_model_id=judge_model_id, temperature=0.1)
+    # rerun_judges_for_v0_requests_from_file(judge_model_id=judge_model_id, temperature=0.1)
 
     
 
