@@ -21,6 +21,53 @@ CHAT_AI_TIMEOUT_SECONDS = float(os.getenv("CHAT_AI_TIMEOUT_SECONDS", "1000"))
 CHAT_AI_MAX_RETRIES = int(os.getenv("CHAT_AI_MAX_RETRIES", "50"))
 CHAT_AI_RETRY_BASE_SECONDS = float(os.getenv("CHAT_AI_RETRY_BASE_SECONDS", "1.0"))
 
+def parse_id_range(id_range, total_items):
+    """
+    Parse inclusive id ranges.
+    -1 means "all" on that side:
+      [-1, 25] -> [0, 25]
+      [25, -1] -> [25, total_items - 1]
+      [-1, -1] -> full range
+    """
+    if id_range is None:
+        return 0, total_items - 1, False
+
+    if not isinstance(id_range, (list, tuple)) or len(id_range) != 2:
+        raise ValueError("id_range must be a list/tuple of length 2, e.g. [-1, 25].")
+
+    start_raw, end_raw = id_range
+    if not isinstance(start_raw, int) or not isinstance(end_raw, int):
+        raise ValueError("id_range values must be integers.")
+
+    if total_items == 0:
+        return 0, -1, start_raw != -1 or end_raw != -1
+
+    start = 0 if start_raw == -1 else start_raw
+    end = (total_items - 1) if end_raw == -1 else end_raw
+
+    if start < 0 or end < 0:
+        raise ValueError(f"id_range resolved to negative bounds: [{start}, {end}]")
+    if start >= total_items or end >= total_items:
+        raise ValueError(
+            f"id_range [{start_raw}, {end_raw}] resolved to [{start}, {end}] "
+            f"but max id is {total_items - 1}."
+        )
+    if start > end:
+        raise ValueError(f"id_range start must be <= end, got [{start_raw}, {end_raw}].")
+
+    is_custom_range = not (start_raw == -1 and end_raw == -1)
+    return start, end, is_custom_range
+
+def build_range_suffix(id_range):
+    if id_range is None:
+        return ""
+    if not isinstance(id_range, (list, tuple)) or len(id_range) != 2:
+        raise ValueError("id_range must be a list/tuple of length 2, e.g. [-1, 25].")
+    start_raw, end_raw = id_range
+    if start_raw == -1 and end_raw == -1:
+        return ""
+    return f"_range_{start_raw}_{end_raw}"
+
 def save_json_response(response, filename = "03_evaluates/output/response.json"):
     with open(filename, 'w') as f:
         if isinstance(response, dict):
@@ -337,7 +384,7 @@ def validate_input_data(v0_path, v1_path):
 
 
 
-def judge_baseline(model_id, temperature, mode = "selected", limit=None):
+def judge_baseline(model_id, temperature, mode = "selected", limit=None, id_range=None, output_suffix=""):
     os.makedirs("03_evaluates/output/completions_v0", exist_ok=True)
     os.makedirs("03_evaluates/output/completions_v1", exist_ok=True)
 
@@ -397,9 +444,15 @@ def judge_baseline(model_id, temperature, mode = "selected", limit=None):
     judge_model_id = model_id
 
     paired_answers = list(zip(model_answers_v1, model_answers_v0))
+    range_start, range_end, is_custom_range = parse_id_range(id_range, len(paired_answers))
+    if is_custom_range:
+        print(f"ID range is set to [{range_start}, {range_end}] (inclusive).")
+
     for idx, (model_answer_v1, model_answer_v0) in enumerate(
         tqdm(paired_answers, total=len(paired_answers), desc="Judging responses")
     ):
+        if idx < range_start or idx > range_end:
+            continue
         if limit is not None and idx >= limit:
             break
         prompt = selected_responses_v1[idx].get("prompt", "")
@@ -498,14 +551,14 @@ def judge_baseline(model_id, temperature, mode = "selected", limit=None):
                 "error": str(exc),
             })
 
-    judgements_v1_path = f"03_evaluates/output/{model_id}_judgements_v1_{mode}.json"
-    judgements_v0_path = f"03_evaluates/output/{model_id}_judgements_v0_{mode}.json"
+    judgements_v1_path = f"03_evaluates/output/{model_id}_judgements_v1_{mode}{output_suffix}.json"
+    judgements_v0_path = f"03_evaluates/output/{model_id}_judgements_v0_{mode}{output_suffix}.json"
 
     save_json_response(
         {
             "judge_model_id": judge_model_id,
             "criteria_file": "03_evaluates/CRITERIA_llm.md",
-            "num_answers": len(model_answers_v1),
+            "num_answers": len(judgments_v1),
             "judgments": judgments_v1,
         },
         filename=judgements_v1_path,
@@ -515,7 +568,7 @@ def judge_baseline(model_id, temperature, mode = "selected", limit=None):
         {
             "judge_model_id": judge_model_id,
             "criteria_file": "03_evaluates/CRITERIA_llm.md",
-            "num_answers": len(model_answers_v0),
+            "num_answers": len(judgments_v0),
             "judgments": judgments_v0,
         },
         filename=judgements_v0_path,
@@ -695,19 +748,35 @@ def validate_judges():
         extract_markdown_judgements_from_json(json_filename=judgements_v1)
         extract_markdown_judgements_from_json(json_filename=judgements_v0)
 
-def run_judge_on_full_data(judge_model_id, temperature, limit=None):
-    judge_baseline(model_id=judge_model_id, temperature=temperature, mode="full", limit=limit)
-    judgements_v1 = f"03_evaluates/output/{judge_model_id}_judgements_v1_full.json"
-    judgements_v0 = f"03_evaluates/output/{judge_model_id}_judgements_v0_full.json"
+def run_judge_on_full_data(judge_model_id, temperature, limit=None, id_range=(-1, -1)):
+    output_suffix = build_range_suffix(id_range)
+    judge_baseline(
+        model_id=judge_model_id,
+        temperature=temperature,
+        mode="full",
+        limit=limit,
+        id_range=id_range,
+        output_suffix=output_suffix,
+    )
+    judgements_v1 = f"03_evaluates/output/{judge_model_id}_judgements_v1_full{output_suffix}.json"
+    judgements_v0 = f"03_evaluates/output/{judge_model_id}_judgements_v0_full{output_suffix}.json"
     append_criteria_to_judgements_json(json_filename=judgements_v1, output_filename=judgements_v1)
     append_criteria_to_judgements_json(json_filename=judgements_v0, output_filename=judgements_v0)
     extract_markdown_judgements_from_json(json_filename=judgements_v1)
     extract_markdown_judgements_from_json(json_filename=judgements_v0)
 
-def run_judge_on_full_data_sft(judge_model_id, temperature, limit=None):
-    judge_baseline(model_id=judge_model_id, temperature=temperature, mode="sft", limit=limit)
-    judgements_v1 = f"03_evaluates/output/{judge_model_id}_judgements_v1_sft.json"
-    judgements_v0 = f"03_evaluates/output/{judge_model_id}_judgements_v0_sft.json"
+def run_judge_on_full_data_sft(judge_model_id, temperature, limit=None, id_range=(-1, -1)):
+    output_suffix = build_range_suffix(id_range)
+    judge_baseline(
+        model_id=judge_model_id,
+        temperature=temperature,
+        mode="sft",
+        limit=limit,
+        id_range=id_range,
+        output_suffix=output_suffix,
+    )
+    judgements_v1 = f"03_evaluates/output/{judge_model_id}_judgements_v1_sft{output_suffix}.json"
+    judgements_v0 = f"03_evaluates/output/{judge_model_id}_judgements_v0_sft{output_suffix}.json"
     append_criteria_to_judgements_json(json_filename=judgements_v1, output_filename=judgements_v1)
     append_criteria_to_judgements_json(json_filename=judgements_v0, output_filename=judgements_v0)
     extract_markdown_judgements_from_json(json_filename=judgements_v1)
@@ -1007,7 +1076,7 @@ def main():
     judge_model_id = "qwen3.5-397b-a17b"
     # run_judge_on_full_data(judge_model_id=judge_model_id, temperature=0.1, limit=None)
 
-    run_judge_on_full_data_sft(judge_model_id=judge_model_id, temperature=0.1, limit=None)
+    run_judge_on_full_data_sft(judge_model_id=judge_model_id, temperature=0.1, limit=None, id_range=(-1, 24))
 
     # rerun_judges_for_failed_http_requests(judge_model_id=judge_model_id, temperature=0.1)
 
