@@ -10,3 +10,5 @@ checkpoints/
 */__pycache__/
 01_prompting/run_benchmark_vllm_api.py
 01_prompting/results/lm_harness/
+03_evaluates/output/completions_v0
+03_evaluates/output/completions_v1
