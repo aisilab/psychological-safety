@@ -62,5 +62,30 @@ lm_eval \
 
 
 
+lm_eval \
+    --model vllm \
+    --model_args pretrained=Qwen/Qwen3.5-27B,trust_remote_code=True,enable_prefix_caching=True,max_gen_toks=4096,reasoning_parser=qwen3 \
+    --tasks hellaswag \
+    --batch_size auto \
+    --output_path ./03_evaluates/basic_capabilities/lm_harness/ \
+    --log_samples \
+    --system_instruction "$(cat ./01_prompting/systemprompt-v0.txt)"
 
+|  Tasks  |Version|Filter|n-shot| Metric |   |Value |   |Stderr|
+|---------|------:|------|-----:|--------|---|-----:|---|-----:|
+|hellaswag|      1|none  |     0|acc     |↑  |0.6208|±  |0.0048|
+|         |       |none  |     0|acc_norm|↑  |0.8192|±  |0.0038|
 
+lm_eval \
+    --model vllm \
+    --model_args pretrained=Qwen/Qwen3.5-27B,trust_remote_code=True,enable_prefix_caching=True,max_gen_toks=4096,reasoning_parser=qwen3 \
+    --tasks hellaswag \
+    --batch_size auto \
+    --output_path ./03_evaluates/basic_capabilities/lm_harness/ \
+    --log_samples \
+    --system_instruction "$(cat ./01_prompting/systemprompt-v1.txt)"
+
+|  Tasks  |Version|Filter|n-shot| Metric |   |Value |   |Stderr|
+|---------|------:|------|-----:|--------|---|-----:|---|-----:|
+|hellaswag|      1|none  |     0|acc     |↑  |0.5711|±  |0.0049|
+|         |       |none  |     0|acc_norm|↑  |0.7709|±  |0.0042|
