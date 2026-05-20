@@ -473,3 +473,36 @@ lm_eval \
     --output_path ./03_evaluates/basic_capabilities/lm_harness/ \
     --log_samples \
     --system_instruction "$(cat ./01_prompting/systemprompt-v1.txt)"
+
+|  - public_relations                   |      1|none  |     0|acc   |↑  |0.7636|±  |0.0407|
+|  - security_studies                   |      1|none  |     0|acc   |↑  |0.8490|±  |0.0229|
+|  - sociology                          |      1|none  |     0|acc   |↑  |0.9254|±  |0.0186|
+|  - us_foreign_policy                  |      1|none  |     0|acc   |↑  |0.9400|±  |0.0239|
+| - stem                                |      2|none  |      |acc   |↑  |0.8446|±  |0.0063|
+|  - abstract_algebra                   |      1|none  |     0|acc   |↑  |0.7900|±  |0.0409|
+|  - anatomy                            |      1|none  |     0|acc   |↑  |0.8444|±  |0.0313|
+|  - astronomy                          |      1|none  |     0|acc   |↑  |0.9605|±  |0.0158|
+|  - college_biology                    |      1|none  |     0|acc   |↑  |0.9722|±  |0.0137|
+|  - college_chemistry                  |      1|none  |     0|acc   |↑  |0.6900|±  |0.0465|
+|  - college_computer_science           |      1|none  |     0|acc   |↑  |0.8400|±  |0.0368|
+|  - college_mathematics                |      1|none  |     0|acc   |↑  |0.7100|±  |0.0456|
+|  - college_physics                    |      1|none  |     0|acc   |↑  |0.7745|±  |0.0416|
+|  - computer_security                  |      1|none  |     0|acc   |↑  |0.8500|±  |0.0359|
+|  - conceptual_physics                 |      1|none  |     0|acc   |↑  |0.9149|±  |0.0182|
+|  - electrical_engineering             |      1|none  |     0|acc   |↑  |0.8483|±  |0.0299|
+|  - elementary_mathematics             |      1|none  |     0|acc   |↑  |0.8439|±  |0.0187|
+|  - high_school_biology                |      1|none  |     0|acc   |↑  |0.9548|±  |0.0118|
+|  - high_school_chemistry              |      1|none  |     0|acc   |↑  |0.8621|±  |0.0243|
+|  - high_school_computer_science       |      1|none  |     0|acc   |↑  |0.9500|±  |0.0219|
+|  - high_school_mathematics            |      1|none  |     0|acc   |↑  |0.6481|±  |0.0291|
+|  - high_school_physics                |      1|none  |     0|acc   |↑  |0.7947|±  |0.0330|
+|  - high_school_statistics             |      1|none  |     0|acc   |↑  |0.8657|±  |0.0233|
+|  - machine_learning                   |      1|none  |     0|acc   |↑  |0.8125|±  |0.0370|
+
+|      Groups      |Version|Filter|n-shot|Metric|   |Value |   |Stderr|
+|------------------|------:|------|------|------|---|-----:|---|-----:|
+|mmlu              |      2|none  |      |acc   |↑  |0.8505|±  |0.0029|
+| - humanities     |      2|none  |      |acc   |↑  |0.7983|±  |0.0057|
+| - other          |      2|none  |      |acc   |↑  |0.8703|±  |0.0057|
+| - social sciences|      2|none  |      |acc   |↑  |0.9165|±  |0.0049|
+| - stem           |      2|none  |      |acc   |↑  |0.8446|±  |0.0063|
