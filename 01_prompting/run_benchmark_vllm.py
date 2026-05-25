@@ -17,20 +17,41 @@ Example usage:
         --language-model-only \
         --reasoning-parser qwen3 \
         --enable-prefix-caching
+
+    python run_benchmark_vllm.py \
+        --model giannor/Qwen3.5-27B-psysafe \
+        --dataset ../00_data/val.json \
+        --prompt-field prompt \
+        --output results/svenharms_val_v1_sft.json \
+        --max-new-tokens 4096 \
+        --language-model-only \
+        --reasoning-parser qwen3 \
+        --enable-prefix-caching \
+        --system-prompt systemprompt-v1.txt \
+        --trust-remote-code
+
 """
 
 import argparse
 import json
+import logging
 import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Reduce noisy non-fatal warnings from optional extension paths.
+logging.getLogger("torchao").setLevel(logging.ERROR)
+logging.getLogger("transformers.modeling_rope_utils").setLevel(logging.ERROR)
+
 from datasets import load_dataset
 from vllm import LLM, SamplingParams
-from .utils import split_reasoning_traces
-import logging
-import time
+
+try:
+    from .utils import split_reasoning_traces
+except ImportError:
+    # Support direct execution, e.g. `uv run run_benchmark_vllm.py` from 01_prompting/
+    from utils import split_reasoning_traces
 
 logger = logging.getLogger("vllm")
 
@@ -63,6 +84,7 @@ def extract_prompts(dataset, field: str, max_samples: int | None) -> list[str]:
 
 def run_model(
     model_name: str,
+    tokenizer_name: str | None,
     system_prompt: str,
     prompts: list[str],
     max_new_tokens: int,
@@ -71,18 +93,31 @@ def run_model(
     language_model_only: bool = False,
     reasoning_parser: str | None = None,
     enable_prefix_caching: bool = False,
+    attention_backend: str = "FLASH_ATTN",
+    enforce_eager: bool = False,
+    trust_remote_code: bool = False,
 ) -> list[dict]:
     import os
     if hf_token:
         os.environ["HF_TOKEN"] = hf_token
 
+    attention_config = {
+        "backend": attention_backend.upper() if attention_backend else None,
+        # Avoid TRTLLM FlashInfer kernels that require local CUDA dev headers.
+        "use_trtllm_attention": False,
+        "disable_flashinfer_prefill": True,
+    }
+
     print(f"Loading model: {model_name}", flush=True)
     llm = LLM(
         model=model_name,
+        tokenizer=tokenizer_name or model_name,
         tokenizer_mode="auto",
-        max_model_len=4096,
+        trust_remote_code=trust_remote_code,
+        # max_model_len=4096,
         dtype="auto",
-        enforce_eager=True,
+        attention_config=attention_config,
+        enforce_eager=enforce_eager,
         gpu_memory_utilization=gpu_memory_utilization,
         language_model_only=language_model_only,
         reasoning_parser=reasoning_parser,
@@ -122,6 +157,8 @@ def run_model(
 def main() -> Path:
     parser = argparse.ArgumentParser(description="Run HF model on safety benchmarks via vLLM.")
     parser.add_argument("--model", required=True, help="HuggingFace model ID")
+    parser.add_argument("--tokenizer", default=None,
+                        help="Optional tokenizer model ID override. Use when the model repo has broken custom tokenizer metadata.")
     parser.add_argument("--system-prompt", default="systemprompt-v0.txt",
                         help="Path to system prompt file (default: systemprompt-v0.txt)")
     parser.add_argument("--dataset", required=True,
@@ -140,15 +177,20 @@ def main() -> Path:
                         help="Maximum new tokens to generate per response (default: 512)")
     parser.add_argument("--hf-token", default=None,
                         help="HuggingFace API token for accessing gated models/datasets")
-    parser.add_argument("--attention-backend", default="FLASH_ATTN")
+    parser.add_argument("--attention-backend", default="FLASH_ATTN",
+                        help="vLLM attention backend, e.g. FLASH_ATTN, FLASHINFER, XFORMERS")
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.95,
                         help="Fraction of GPU memory vLLM may use for KV cache (default: 0.95).")
+    parser.add_argument("--enforce-eager", action="store_true",
+                        help="Force eager mode (disables cudagraph/compile optimizations).")
     parser.add_argument("--language-model-only", action="store_true",
                         help="Pass through to vLLM engine arg language_model_only.")
     parser.add_argument("--reasoning-parser", default=None,
                         help="Pass through to vLLM engine arg reasoning_parser (e.g. qwen3).")
     parser.add_argument("--enable-prefix-caching", action="store_true",
                         help="Pass through to vLLM engine arg enable_prefix_caching.")
+    parser.add_argument("--trust-remote-code", action="store_true",
+                        help="Allow execution of custom code from model/tokenizer repos.")
     args = parser.parse_args()
 
     # Set vLLM defaults for Qwen 3.5 reasoning models
@@ -181,19 +223,24 @@ def main() -> Path:
     start = time.time()
     results = run_model(
         model_name=args.model,
+        tokenizer_name=args.tokenizer,
         system_prompt=system_prompt,
         prompts=prompts,
         max_new_tokens=args.max_new_tokens,
         hf_token=args.hf_token,
+        attention_backend=args.attention_backend,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        enforce_eager=args.enforce_eager,
         language_model_only=auto_language_model_only,
         reasoning_parser=auto_reasoning_parser,
         enable_prefix_caching=args.enable_prefix_caching,
+        trust_remote_code=args.trust_remote_code,
     )
     elapsed = time.time() - start
 
     output = {
         "model": args.model,
+        "tokenizer": args.tokenizer or args.model,
         "dataset": args.dataset,
         "dataset_config": args.dataset_config,
         "dataset_split": args.dataset_split,
@@ -201,9 +248,12 @@ def main() -> Path:
         "system_prompt_file": args.system_prompt,
         "system_prompt": system_prompt,
         "max_new_tokens": args.max_new_tokens,
+        "attention_backend": args.attention_backend,
+        "enforce_eager": args.enforce_eager,
         "language_model_only": auto_language_model_only,
         "reasoning_parser": auto_reasoning_parser,
         "enable_prefix_caching": args.enable_prefix_caching,
+        "trust_remote_code": args.trust_remote_code,
         "n_samples": len(results),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "results": results,
