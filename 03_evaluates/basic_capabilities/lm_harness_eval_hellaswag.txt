@@ -1,0 +1,91 @@
+# Evaluation Qwen base vs Qwen psychological safety finetuned
+lm_eval \
+    --model vllm \
+    --model_args pretrained=Qwen/Qwen3.5-27B,trust_remote_code=True,enable_prefix_caching=True,max_gen_toks=4096,language_model_only=True,reasoning_parser=qwen3 \
+    --tasks hellaswag \
+    --batch_size auto \
+    --output_path ./results/lm_harness/ \
+    --log_samples
+
+    |  Tasks  |Version|Filter|n-shot| Metric |   |Value |   |Stderr|
+    |---------|------:|------|-----:|--------|---|-----:|---|-----:|
+    |hellaswag|      1|none  |     0|acc     |↑  |0.6377|±  |0.0048|
+    |         |       |none  |     0|acc_norm|↑  |0.8343|±  |0.0037|
+
+lm_eval \
+    --model vllm \
+    --model_args pretrained=giannor/Qwen3.5-27B-psysafe,trust_remote_code=True,enable_prefix_caching=True,max_gen_toks=4096,language_model_only=True,reasoning_parser=qwen3 \
+    --tasks hellaswag \
+    --batch_size auto \
+    --output_path ./results/lm_harness/ \
+    --log_samples
+
+    |  Tasks  |Version|Filter|n-shot| Metric |   |Value |   |Stderr|
+    |---------|------:|------|-----:|--------|---|-----:|---|-----:|
+    |hellaswag|      1|none  |     0|acc     |↑  |0.6405|±  |0.0048|
+    |         |       |none  |     0|acc_norm|↑  |0.8249|±  |0.0038|
+
+
+
+# Evaluation Qwen base v0 vs v1
+
+lm_eval \
+    --model vllm \
+    --model_args pretrained=Qwen/Qwen3.5-27B,trust_remote_code=True,enable_prefix_caching=True,max_gen_toks=4096,reasoning_parser=qwen3 \
+    --tasks hellaswag \
+    --batch_size auto \
+    --output_path ./results/lm_harness/ \
+    --log_samples \
+    --apply_chat_template True \
+    --system_instruction "$(cat systemprompt-v0.txt)"
+
+|  Tasks  |Version|Filter|n-shot| Metric |   |Value |   |Stderr|
+|---------|------:|------|-----:|--------|---|-----:|---|-----:|
+|hellaswag|      1|none  |     0|acc     |↑  |0.5746|±  |0.0049|
+|         |       |none  |     0|acc_norm|↑  |0.6987|±  |0.0046|
+
+
+lm_eval \
+    --model vllm \
+    --model_args pretrained=Qwen/Qwen3.5-27B,trust_remote_code=True,enable_prefix_caching=True,max_gen_toks=4096,reasoning_parser=qwen3 \
+    --tasks hellaswag \
+    --batch_size 512 \
+    --output_path ./results/lm_harness/ \
+    --log_samples \
+    --apply_chat_template True \
+    --system_instruction "$(cat systemprompt-v1.txt)"
+
+|  Tasks  |Version|Filter|n-shot| Metric |   |Value |   |Stderr|
+|---------|------:|------|-----:|--------|---|-----:|---|-----:|
+|hellaswag|      1|none  |     0|acc     |↑  |0.5484|±  |0.0050|
+|         |       |none  |     0|acc_norm|↑  |0.6610|±  |0.0047|
+
+
+
+lm_eval \
+    --model vllm \
+    --model_args pretrained=Qwen/Qwen3.5-27B,trust_remote_code=True,enable_prefix_caching=True,max_gen_toks=4096,reasoning_parser=qwen3 \
+    --tasks hellaswag \
+    --batch_size auto \
+    --output_path ./03_evaluates/basic_capabilities/lm_harness/ \
+    --log_samples \
+    --system_instruction "$(cat ./01_prompting/systemprompt-v0.txt)"
+
+|  Tasks  |Version|Filter|n-shot| Metric |   |Value |   |Stderr|
+|---------|------:|------|-----:|--------|---|-----:|---|-----:|
+|hellaswag|      1|none  |     0|acc     |↑  |0.6208|±  |0.0048|
+|         |       |none  |     0|acc_norm|↑  |0.8192|±  |0.0038|
+
+lm_eval \
+    --model vllm \
+    --model_args pretrained=Qwen/Qwen3.5-27B,trust_remote_code=True,enable_prefix_caching=True,max_gen_toks=4096,reasoning_parser=qwen3 \
+    --tasks hellaswag \
+    --batch_size auto \
+    --output_path ./03_evaluates/basic_capabilities/lm_harness/ \
+    --log_samples \
+    --system_instruction "$(cat ./01_prompting/systemprompt-v1.txt)"
+
+|  Tasks  |Version|Filter|n-shot| Metric |   |Value |   |Stderr|
+|---------|------:|------|-----:|--------|---|-----:|---|-----:|
+|hellaswag|      1|none  |     0|acc     |↑  |0.5711|±  |0.0049|
+|         |       |none  |     0|acc_norm|↑  |0.7709|±  |0.0042|

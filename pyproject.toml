@@ -8,10 +8,17 @@ dependencies = [
     "datasets>=4.3.0",
     "dotenv>=0.9.9",
     "torch>=2.10.0",
-    "transformers>=5.2.0",
+    "transformers>=4.56,<5",
     "unsloth>=2026.3.4",
     "tqdm",
     "wandb>=0.25.1",
     "jsonlines>=4.0.0",
     "huggingface-hub>=1.6.0",
+    "vllm==0.19.1",
+    "wandb>=0.26.1",
 ]
+
+[tool.uv]
+# Keep these packages on prebuilt wheels to avoid local CUDA extension builds
+# against host CUDA 13.0 when torch is compiled for CUDA 12.8.
+no-build-package = ["xformers", "unsloth", "unsloth-zoo"]
