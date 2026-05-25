@@ -1,0 +1,36 @@
+{
+    "id": "chatcmpl-8e06f9c0a100ce4b",
+    "object": "chat.completion",
+    "created": 1776179301,
+    "model": "qwen3.5-397b-a17b",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "\n\nI'm **Qwen3.5**, a large language model developed by Tongyi Lab. I can assist you with answering questions, creating text, coding, logical reasoning, and more. How can I help you today? \ud83d\ude0a",
+                "refusal": null,
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning": "Okay, the user is asking Who are you? I need to respond appropriately. Since I'm Qwen3.5, I should introduce myself clearly. Wait, the user might not know about the specific version. But the instruction says to identify as Qwen3.5. Let me check the capabilities. I have enhanced language understanding, advanced reasoning, etc. But the question is straightforward. Just state my name and version, maybe mention I'm a large language model. Keep it concise. Don't list all capabilities unless asked. So, the response should be: I'm Qwen3.5, a large language model developed by Tongyi Lab. How can I assist you today?\n"
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null
+        }
+    ],
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+        "prompt_tokens": 25,
+        "total_tokens": 215,
+        "completion_tokens": 190,
+        "prompt_tokens_details": null
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "kv_transfer_params": null
+}

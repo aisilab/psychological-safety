@@ -8,6 +8,16 @@ wandb/
 */__pycache__/
 01_prompting/other
 01_prompting/results/ignore
+03_evaluates/envs.env
+03_evaluates/output/completions*
+03_evaluates/output/validation
+*/__pycache__
+*/.DS_Store
+.DS_Store
+.vscode
+03_evaluates/output/completions_v0
+03_evaluates/output/completions_v1
+01_prompting/results/lm_harness
 01_prompting/results/lm_harness/
 01_prompting/run_benchmark_vllm_api.py
 03_evaluates/output/
