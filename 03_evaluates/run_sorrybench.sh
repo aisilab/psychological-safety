@@ -67,8 +67,6 @@ uv_pip() { uv pip install --python "${CONDA_PREFIX}/bin/python" "$@"; }
 MODELS=(
   "unsloth/Qwen3.5-35B-A3B|qwen35-a3b|"
   "unsloth/Qwen3.5-27B|qwen35-27b|"
-  "lgalke/Qwen3.5-35B-A3B-psysafe|psysafe-a3b|unsloth/Qwen3.5-35B-A3B"
-  "giannor/Qwen3.5-27B-psysafe|psysafe-27b|unsloth/Qwen3.5-27B"
 )
 
 # 20 mutations + base. `question` is the base 440-prompt set.

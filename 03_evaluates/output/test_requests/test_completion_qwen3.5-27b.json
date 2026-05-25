@@ -1,0 +1,36 @@
+{
+    "id": "chatcmpl-b9d50b17b3f683c9",
+    "object": "chat.completion",
+    "created": 1776349426,
+    "model": "qwen3.5-27b",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "\n\nHello! I'm **Qwen3.5**, the latest large language model developed by Tongyi Lab. I'm designed to assist with a wide range of tasks, from answering questions and creating content to solving complex problems and analyzing data. I have strong capabilities in language understanding, logical reasoning, and multi-modal processing, and I support over 100 languages. How can I assist you today? \ud83d\ude0a",
+                "refusal": null,
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning": "Okay, the user is asking, 'Who are you?' I need to introduce myself clearly. I'm Qwen3.5, the latest large language model developed by Tongyi Lab. I should mention my key features like enhanced language understanding, advanced reasoning, and multi-modal capabilities. Keep it friendly and concise. Let me structure the response to highlight my main strengths without getting too technical. Make sure to invite them to ask for help.\n"
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null
+        }
+    ],
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+        "prompt_tokens": 25,
+        "total_tokens": 200,
+        "completion_tokens": 175,
+        "prompt_tokens_details": null
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "kv_transfer_params": null
+}

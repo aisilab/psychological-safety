@@ -66,8 +66,6 @@ activate_pao() {
 MODELS=(
   "unsloth/Qwen3.5-35B-A3B|qwen35-a3b|"
   "unsloth/Qwen3.5-27B|qwen35-27b|"
-  "lgalke/Qwen3.5-35B-A3B-psysafe|psysafe-a3b|unsloth/Qwen3.5-35B-A3B"
-  "giannor/Qwen3.5-27B-psysafe|psysafe-27b|unsloth/Qwen3.5-27B"
 )
 
 # System prompts — keys must match run_sorrybench.sh so model_answer file
