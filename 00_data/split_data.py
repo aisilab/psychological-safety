@@ -16,7 +16,7 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).parent
 PROJECT_DIR = DATA_DIR.parent
-INPUT_FILE = DATA_DIR / "final_dataset_SvenHarms.json"
+INPUT_FILE = DATA_DIR / "final_dataset.json"
 SYSTEM_PROMPT_FILE = PROJECT_DIR / "01_prompting" / "systemprompt-v1.txt"
 
 

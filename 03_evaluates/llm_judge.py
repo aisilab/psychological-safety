@@ -21,6 +21,11 @@ CHAT_AI_TIMEOUT_SECONDS = float(os.getenv("CHAT_AI_TIMEOUT_SECONDS", "1000"))
 CHAT_AI_MAX_RETRIES = int(os.getenv("CHAT_AI_MAX_RETRIES", "50"))
 CHAT_AI_RETRY_BASE_SECONDS = float(os.getenv("CHAT_AI_RETRY_BASE_SECONDS", "1.0"))
 
+LATEST_V0_RESULTS = "01_prompting/results/val_v0_latest_splitted_with_category.json"
+LATEST_V1_RESULTS = "01_prompting/results/val_v1_latest_splitted_with_category.json"
+SFT_V0_RESULTS = "01_prompting/results/val_v0_sft_splitted_with_category.json"
+SFT_V1_RESULTS = "01_prompting/results/val_v1_sft_splitted_with_category.json"
+
 def parse_id_range(id_range, total_items):
     """
     Parse inclusive id ranges.
@@ -250,8 +255,8 @@ def select_data_to_test_judges(sample_per_cluster=5, random_seed=42):
     Take 5 random model answers for each risk cluster (for both prompts v0 and v1) and ask all the judges to evaluate them.
     """
 
-    model_answers_v0_path = "01_prompting/results/svenharms_val_v0_latest_splitted_with_category.json"
-    model_answers_v1_path = "01_prompting/results/svenharms_val_v1_latest_splitted_with_category.json"
+    model_answers_v0_path = LATEST_V0_RESULTS
+    model_answers_v1_path = LATEST_V1_RESULTS
 
     with open(model_answers_v0_path, 'r') as f:
         model_answers_v0 = json.load(f)
@@ -393,12 +398,12 @@ def judge_baseline(model_id, temperature, mode = "selected", limit=None, id_rang
     elif mode == "selected":
         selected_response_path = "03_evaluates/output/selected_responses.json"
     elif mode == "full":
-        full_response_path_v0 = "01_prompting/results/svenharms_val_v0_latest_splitted_with_category.json"
-        full_response_path_v1 = "01_prompting/results/svenharms_val_v1_latest_splitted_with_category.json"
+        full_response_path_v0 = LATEST_V0_RESULTS
+        full_response_path_v1 = LATEST_V1_RESULTS
         data_v0, data_v1 = validate_input_data(full_response_path_v0, full_response_path_v1)
     elif mode == "sft":
-        full_response_path_v0 = "01_prompting/results/svenharms_val_v0_sft_splitted_with_category.json"
-        full_response_path_v1 = "01_prompting/results/svenharms_val_v1_sft_splitted_with_category.json"
+        full_response_path_v0 = SFT_V0_RESULTS
+        full_response_path_v1 = SFT_V1_RESULTS
         data_v0, data_v1 = validate_input_data(full_response_path_v0, full_response_path_v1)
 
         v0_by_prompt = {
@@ -679,8 +684,8 @@ def extract_failed_requests(json_filename):
 
     full_metadata_by_id = {}
     if "_full" in json_filename:
-        full_response_path_v0 = "01_prompting/results/svenharms_val_v0_latest_splitted_with_category.json"
-        full_response_path_v1 = "01_prompting/results/svenharms_val_v1_latest_splitted_with_category.json"
+        full_response_path_v0 = LATEST_V0_RESULTS
+        full_response_path_v1 = LATEST_V1_RESULTS
         data_v0, data_v1 = validate_input_data(full_response_path_v0, full_response_path_v1)
 
         v0_by_prompt = {
@@ -1074,47 +1079,12 @@ def run_single_judge_request():
     
 def main():
     judge_model_id = "qwen3.5-397b-a17b"
-    # run_judge_on_full_data(judge_model_id=judge_model_id, temperature=0.1, limit=None)
+    run_judge_on_full_data(judge_model_id=judge_model_id, temperature=0.1, limit=None)
 
-    run_judge_on_full_data_sft(judge_model_id=judge_model_id, temperature=0.1, limit=None, id_range=(-1, 24))
-
-    # rerun_judges_for_failed_http_requests(judge_model_id=judge_model_id, temperature=0.1)
-
-    # rerun_judges_for_v0_requests_from_file(judge_model_id=judge_model_id, temperature=0.1)
+    run_judge_on_full_data_sft(judge_model_id=judge_model_id, temperature=0.1, limit=None)
 
     
 
 
 if __name__ == "__main__":
     main()
-
-
-""" Unused code
-
-def create_chat_completion_2(model_id, messages, temperature=0.0, filename="03_evaluates/output/chat_completion_response.json"):
-    openai_api_key = CHAT_AI_TOKEN
-    openai_api_base = "https://chat-ai.academiccloud.de/v1"
-
-    client = OpenAI(
-        api_key=openai_api_key,
-        base_url=openai_api_base,
-    )
-
-    # Thinking ON (default if you omit chat_template_kwargs)
-    resp_on = client.chat.completions.create(
-        model=model_id,
-        messages=messages,
-        temperature=temperature,
-        extra_body={
-            "thinking": {
-                "type": "enabled",
-                "clear_thinking": True
-            }
-        }
-    )
-    print("thinking=on, think content:\n", resp_on.choices[0].message)
-
-    # save_json_response(resp_on, filename=filename)
-
-
-"""

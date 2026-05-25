@@ -1,37 +1,3 @@
-"""
-Example usage:
-    python run_benchmark_vllm.py \
-        --model meta-llama/Llama-3.2-1B-Instruct \
-        --dataset ../00_data/val.json \
-        --prompt-field prompt \
-        --output results/output.json \
-        --max-samples 10
-    
-    python run_benchmark_vllm.py \
-        --model Qwen/Qwen3.5-27B \
-        --dataset ../00_data/val.json \
-        --prompt-field prompt \
-        --output results/output.json \
-        --max-new-tokens 4096 \
-        --max-samples 10 \
-        --language-model-only \
-        --reasoning-parser qwen3 \
-        --enable-prefix-caching
-
-    python run_benchmark_vllm.py \
-        --model giannor/Qwen3.5-27B-psysafe \
-        --dataset ../00_data/val.json \
-        --prompt-field prompt \
-        --output results/svenharms_val_v1_sft.json \
-        --max-new-tokens 4096 \
-        --language-model-only \
-        --reasoning-parser qwen3 \
-        --enable-prefix-caching \
-        --system-prompt systemprompt-v1.txt \
-        --trust-remote-code
-
-"""
-
 import argparse
 import json
 import logging

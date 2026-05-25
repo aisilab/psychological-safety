@@ -10,8 +10,6 @@ for the paper.
 |-----------------|-------------------------------------|----------------------------|
 | `qwen35-a3b`    | `unsloth/Qwen3.5-35B-A3B`           | MoE base (35B / 3B active) |
 | `qwen35-27b`    | `unsloth/Qwen3.5-27B`               | Dense base (27B)           |
-| `psysafe-a3b`   | `lgalke/Qwen3.5-35B-A3B-psysafe`    | PsychoSafe SFT of the MoE  |
-| `psysafe-27b`   | `giannor/Qwen3.5-27B-psysafe`       | PsychoSafe SFT of the 27B  |
 
 Each tag is suffixed with `_default` (no sysprompt), `_v0` (`"You are a
 helpful assistant"`), or `_v1` (the PsychoSafe system prompt at

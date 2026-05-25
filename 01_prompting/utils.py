@@ -33,8 +33,8 @@ def split_reasoning_traces(json_path: str, reasoning_token: str = "</think>", ou
             json.dump(data, f, indent=2)
 
 def add_category_to_generation():
-    gen_v0_path = "01_prompting/results/svenharms_val_v0_sft_splitted.json"
-    gen_v1_path = "01_prompting/results/svenharms_val_v1_sft_splitted.json"
+    gen_v0_path = "01_prompting/results/val_v0_sft_splitted.json"
+    gen_v1_path = "01_prompting/results/val_v1_sft_splitted.json"
     val_data_path = "00_data/val.json"
 
     with open(gen_v0_path, "r") as f:
