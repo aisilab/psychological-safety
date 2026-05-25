@@ -1,6 +1,20 @@
 01_prompting/to_run.sh
 01_prompting/other
 01_prompting/results/ignore
+01_prompting/results/lm_harness/
+01_prompting/run_benchmark_vllm_api.py
+03_evaluates/output/
+03_evaluates/output/completions_v0
+03_evaluates/output/completions_v1
+03_evaluates/basic_capabilities/lm_harness/
+03_evaluates/envs.env
+envs.env
+checkpoints/
+completions*
+lm_harness
+unsloth_compiled_cache/
+validation
+wandb/
 .sorry-bench-mirror/
 paper/
 
