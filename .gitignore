@@ -1,4 +1,11 @@
 01_prompting/to_run.sh
+01_prompting/results/
+checkpoints/
+envs.env
+.vscode/
+unsloth_compiled_cache/
+wandb/
+*/__pycache__/
 01_prompting/other
 01_prompting/results/ignore
 01_prompting/results/lm_harness/

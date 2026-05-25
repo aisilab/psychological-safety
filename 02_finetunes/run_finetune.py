@@ -1,20 +1,27 @@
-import json
+"""
+https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Qwen3_5_MoE.ipynb#scrollTo=ECH-7XD-DKXd
+"""
+import unsloth
 import os
 import sys
+import yaml
+import json
+import argparse
 
-import backoff
+import torch
 import pandas as pd
-from datasets import Dataset
+from trl import SFTConfig, SFTTrainer
+
 from unsloth import FastLanguageModel
+from unsloth.chat_templates import train_on_responses_only
 
-from base_train_config import TrainingConfig
-from trainer import sft_train
-from finetune_util import load_jsonl, load_model_and_tokenizer
-from dotenv import load_dotenv
+from datasets import Dataset, concatenate_datasets
+from finetune_util import load_jsonl, generate_conversation, formatting_prompts_func
 
-# Load environment variables from .env file
-load_dotenv()
-
+def get_parser():
+    parser = argparse.ArgumentParser("LGP", add_help=False)
+    parser.add_argument("--config", default="runs/", type=str, required=False)
+    return parser
 
 def load_parquet_as_text(file_path):
     """Load a parquet file and combine title + content into a text field."""
@@ -34,25 +41,7 @@ def load_parquet_as_text(file_path):
         rows.append(dict(text=text))
     return rows
 
-
-def convert_prompt_answer_to_messages(rows):
-    """Convert rows with 'prompt'/'answer' fields to 'messages' format."""
-    converted = []
-    for r in rows:
-        if 'prompt' in r and 'answer' in r:
-            messages = [
-                {"role": "user", "content": r["prompt"]},
-                {"role": "assistant", "content": r["answer"]},
-            ]
-            converted.append(dict(messages=messages))
-        elif 'messages' in r:
-            converted.append(dict(messages=r['messages']))
-        else:
-            raise ValueError(f"Row must have either 'prompt'+'answer' or 'messages' keys, got: {list(r.keys())}")
-    return converted
-
-
-def load_training_data(file_path, loss_type):
+def load_training_data(file_path, loss_type, think_start="<think>", think_end="</think>"):
     """Load training data from JSON, JSONL, or parquet, returning a Dataset."""
     if file_path.endswith(".parquet"):
         rows = load_parquet_as_text(file_path)
@@ -65,135 +54,123 @@ def load_training_data(file_path, loss_type):
         rows = load_jsonl(file_path)
 
     if loss_type == "sft":
-        return Dataset.from_list(convert_prompt_answer_to_messages(rows))
+        return Dataset.from_list(generate_conversation(rows, think_start=think_start, think_end=think_end))
     else:
         return Dataset.from_list(rows)
 
-
-def train(training_cfg):
+def train(config):
     """Prepare lora model, call training function, and push to hub"""
-    model, tokenizer = load_model_and_tokenizer(training_cfg.model, load_in_4bit=training_cfg.load_in_4bit)
-    
-    # Load reference model for KL regularization if needed
-    reference_model = None
-    if training_cfg.kl_regularization:
-        print("Loading reference model for KL regularization...")
-        reference_model, _ = load_model_and_tokenizer(training_cfg.model, load_in_4bit=training_cfg.load_in_4bit)
+    print(f"Loading model {config['model']} with load_in_4bit={config['load_in_4bit']}...")
+    model, processor = FastLanguageModel.from_pretrained(
+        model_name=config["model"],
+        dtype=torch.bfloat16,
+        device_map="auto",
+        load_in_4bit=config["load_in_4bit"],
+        max_seq_length=config["max_seq_length"],
+        fast_inference=False, # not supported for moe
+    )
+    tokenizer = processor.tokenizer
+    target_modules = config["target_modules"]
 
-    # Load from pre-trained adapter if specified, otherwise create new LoRA adapter
-    if training_cfg.adapter_to_load:
-        print(f"Loading pre-trained adapter from {training_cfg.adapter_to_load}")
-        print("Note: LoRA configuration parameters (r, lora_alpha, target_modules, etc.) from config file will be ignored")
-        print("as they are determined by the loaded adapter configuration.")
-        from peft import PeftModel, PeftConfig
-        # Load adapter configuration to check compatibility
-        try:
-            adapter_config = PeftConfig.from_pretrained(training_cfg.adapter_to_load)
-            print(f"Adapter config: r={adapter_config.r}, alpha={adapter_config.lora_alpha}, target_modules={adapter_config.target_modules}")
-            
-            # Warn about configuration mismatches
-            if hasattr(adapter_config, 'r') and adapter_config.r != training_cfg.r:
-                print(f"Warning: Adapter r={adapter_config.r} differs from config r={training_cfg.r}")
-            if hasattr(adapter_config, 'lora_alpha') and adapter_config.lora_alpha != training_cfg.lora_alpha:
-                print(f"Warning: Adapter alpha={adapter_config.lora_alpha} differs from config alpha={training_cfg.lora_alpha}")
-            if hasattr(adapter_config, 'target_modules') and adapter_config.target_modules != training_cfg.target_modules:
-                print(f"Warning: Adapter target_modules={adapter_config.target_modules} differs from config target_modules={training_cfg.target_modules}")
-        except Exception as e:
-            print(f"Warning: Could not load adapter config: {e}")
-        
-        model = PeftModel.from_pretrained(model, training_cfg.adapter_to_load, is_trainable=True)
-        # Ensure model is in training mode and parameters require gradients
-        model.train()
-        print(f"Loaded adapter with {sum(p.numel() for p in model.parameters() if p.requires_grad)} trainable parameters")
+    print(f"Using PEFT target modules: {target_modules}")
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r=config["lora_r"],
+        target_modules=target_modules,
+        lora_alpha=config["lora_alpha"],
+        lora_dropout=config["lora_dropout"],
+        bias=config["bias"],
+        use_rslora=config["use_rslora"],
+        use_gradient_checkpointing=True,
+        random_state=config["seed"],
+    )
+    # load datasets
+    think_start = config.get("think_start", "<think>")
+    think_end = config.get("think_end", "</think>")
+    train_dataset = load_training_data(config["training_file"], config["loss"], think_start=think_start, think_end=think_end)
+    eval_dataset = None
+    if config["val_file"]:
+        eval_dataset = load_training_data(config["val_file"], config["loss"], think_start=think_start, think_end=think_end)
     else:
-        print("Creating new LoRA adapter")
-        target_modules = training_cfg.target_modules
-        model = FastLanguageModel.get_peft_model(
-            model,
-            r=training_cfg.r,
-            target_modules=target_modules,
-            layers_to_transform=training_cfg.layers_to_transform,
-            lora_alpha=training_cfg.lora_alpha,
-            lora_dropout=training_cfg.lora_dropout,
-            bias=training_cfg.lora_bias,
-            use_gradient_checkpointing=True,
-            random_state=training_cfg.seed,
-            use_rslora=training_cfg.use_rslora,
-            loftq_config=None,
-            use_dora=False,
-        )
-    dataset = load_training_data(training_cfg.training_file, training_cfg.loss)
-
-    # Load KL dataset if KL regularization is enabled
-    kl_dataset = None
-    if training_cfg.kl_regularization and training_cfg.kl_dataset_file:
-        print(f"Loading KL dataset from {training_cfg.kl_dataset_file}...")
-        kl_dataset = load_training_data(training_cfg.kl_dataset_file, training_cfg.loss)
-
-    if training_cfg.test_file:
-        test_dataset = load_training_data(training_cfg.test_file, training_cfg.loss)
-        #split = dataset.train_test_split(test_size=0.1, seed=training_cfg.seed)
-        #dataset = split["train"]
-        # this is so our train set is the same when we have a different test set!
-        #dont_use_me_dataset = split["test"]
-
-    else:
+        print("No test file provided, splitting 10% of training data for validation")
         # Split 10% of train data for testing when no test set provided
         # Use seed from training config to make the split deterministic
-        split = dataset.train_test_split(test_size=0.1, seed=training_cfg.seed)
-        dataset = split["train"]
-        test_dataset = split["test"]
+        split = train_dataset.train_test_split(test_size=0.1, seed=config["seed"])
+        train_dataset = split["train"]
+        eval_dataset = split["test"]
 
-    kwargs = {}
-    if training_cfg.max_steps:
-        kwargs["max_steps"] = training_cfg.max_steps
-    
-    trainer = sft_train(training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, 
-                       kl_dataset=kl_dataset, reference_model=reference_model, **kwargs)
-    trainer.train()
+    if config["concatenate_datasets"]:
+        print("Concatenating train and eval datasets for training...")
+        train_dataset = concatenate_datasets([train_dataset, eval_dataset])
+   
+    train_dataset = train_dataset.map(
+        formatting_prompts_func, 
+        batched = True,
+        fn_kwargs={
+            "tokenizer": tokenizer,
+            "verbose": config["verbose_formatting"]
+        },
+    )
+    if eval_dataset is not None:
+        eval_dataset = eval_dataset.map(
+            formatting_prompts_func, 
+            batched = True,
+            fn_kwargs={
+                "tokenizer": tokenizer,
+                "verbose": config["verbose_formatting"]
+            },
+        )
 
-    finetuned_model_id = training_cfg.finetuned_model_id
-    push_model(training_cfg,finetuned_model_id, model, tokenizer)
-
-    try:
-        eval_results = trainer.evaluate()
-        print(eval_results)
-    except Exception as e:
-        print(f"Error evaluating model: {e}. The model has already been pushed to the hub.")
-
-
-@backoff.on_exception(backoff.constant, Exception, interval=10, max_tries=5)
-def push_model(training_cfg, finetuned_model_id, model, tokenizer):
-    # Validate configuration
-    if training_cfg.merge_before_push and training_cfg.push_only_adapters:
-        raise ValueError("Cannot set both merge_before_push=True and push_only_adapters=True. "
-                        "After merging, the model no longer has LoRA adapters to push separately.")
-    
-    # First merge if requested
-    if training_cfg.merge_before_push:
-        print("Merging LoRA weights with base model...")
-        model = model.merge_and_unload()
-        print("Successfully merged weights!")
-    
-    # Then push based on push_only_adapters setting
-    if training_cfg.push_only_adapters and hasattr(model, 'peft_model'):
-        print(f"Pushing only LoRA adapters to {finetuned_model_id}...")
-        # Only push the LoRA adapters
-        model.peft_model.push_to_hub(finetuned_model_id, token=os.environ['HF_TOKEN'], private=training_cfg.push_to_private)
-        print("Successfully pushed LoRA adapters!")
-    else:
-        print(f"Pushing {'merged ' if training_cfg.merge_before_push else 'full '}model and tokenizer to {finetuned_model_id}...")
-        model.push_to_hub(finetuned_model_id, token = os.environ['HF_TOKEN'], private=training_cfg.push_to_private)
-        tokenizer.push_to_hub(finetuned_model_id, token = os.environ['HF_TOKEN'], private=training_cfg.push_to_private)
-        print(f"Successfully pushed {'merged ' if training_cfg.merge_before_push else 'full '}model and tokenizer!")
-
+    trainer = SFTTrainer(
+        model = model,
+        tokenizer = tokenizer,
+        train_dataset = train_dataset,
+        eval_dataset = eval_dataset if not config["concatenate_datasets"] else None,
+        args = SFTConfig(
+            per_device_train_batch_size = config["batch_size"],
+            gradient_accumulation_steps = config["gradient_accumulation_steps"], 
+            per_device_eval_batch_size=config["per_device_eval_batch_size"],  
+            warmup_steps = config["warmup_steps"],
+            num_train_epochs = config["num_train_epochs"],
+            max_steps = config["max_steps"],
+            save_strategy=config["save_strategy"],
+            learning_rate = float(config["learning_rate"]),
+            logging_steps = int(config["logging_steps"]),
+            optim = config["optim"],
+            weight_decay = float(config["weight_decay"]),
+            lr_scheduler_type = config["lr_scheduler_type"],
+            seed = int(config["seed"]),
+            output_dir = config["output_dir"],
+            report_to = config["report_to"], # Use this for WandB etc
+            do_eval=config["do_eval"],
+            eval_strategy=config["eval_strategy"],
+        ),
+    )
+    # train on the assistant outputs and ignore the loss on the user's inputs.
+    if config['train_on_responses_only']:
+        trainer = train_on_responses_only(
+            trainer,
+            instruction_part = config.get("instruction_part", "<|im_start|>user\n"),
+            response_part = config.get("response_part", f"<|im_start|>assistant\n{think_start}"),
+        )
+    trainer.train(resume_from_checkpoint=config["resume_from_checkpoint"])
+    save_method = "merged_16bit" if "oss" not in config["model"] else "mxfp4"
+    model.save_pretrained_merged(config["output_dir"], tokenizer, save_method = save_method,)
 
 def main(config_path: str):
-    with open(config_path, 'r') as f:
-        config_data = json.load(f)
-    training_config = TrainingConfig(**config_data)
-    train(training_config)
+    with open(config_path, "r") as f:
+        config_data = yaml.safe_load(f)
+    
+    if "wandb_project" in config_data:
+        os.environ["WANDB_PROJECT"] = config_data["wandb_project"]
+    os.environ["TOKENIZERS_PARALLELISM"] = "false" 
+    os.environ['UNSLOTH_MOE_DISABLE_AUTOTUNE']='1'
 
+    train(config_data)
+
+    print(f"Saving config to {config_data['output_dir']}/{config_data['name']}.yaml")
+    with open(os.path.join(config_data['output_dir'], f"{config_data['name']}.yaml"), "w") as f:
+        yaml.dump(config_data, f)
 
 if __name__ == "__main__":
     main(sys.argv[1])
