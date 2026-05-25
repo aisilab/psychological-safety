@@ -515,7 +515,8 @@ if run_stage aggregate; then
   cd "${PSYSAFE_DIR}"
   python 03_evaluates/sorrybench_aggregate.py \
       --sorry-bench-dir "${SORRY_DIR}" \
-      --out-dir "${PSYSAFE_DIR}/03_evaluates/results/sorrybench"
+      --out-dir "${PSYSAFE_DIR}/03_evaluates/results/sorrybench" \
+      --exclude-ids-file "${PSYSAFE_DIR}/03_evaluates/sorrybench_leaked_ids.json"
   echo "==> results in ${PSYSAFE_DIR}/03_evaluates/results/sorrybench"
 fi
 

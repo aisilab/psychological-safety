@@ -1,0 +1,5 @@
+model,default_base,v0_base,v1_base,default_mutavg,v0_mutavg,v1_mutavg
+psysafe-27b,0.0,0.0,0.0,0.0,0.0,0.1
+psysafe-a3b,0.0,0.0,0.0,0.2,0.1,0.0
+qwen35-27b,17.1,13.2,13.6,25.4,25.4,19.0
+qwen35-a3b,17.9,16.4,13.9,26.9,26.6,17.7

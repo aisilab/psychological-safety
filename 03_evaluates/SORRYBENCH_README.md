@@ -4,6 +4,18 @@ Runs four PsychoSafe-relevant Qwen3.5 checkpoints on SORRY-Bench (base + all
 20 linguistic mutations × 3 system-prompt settings) and produces the table
 for the paper.
 
+## Decontamination
+
+SORRY-Bench and the PsychoSafe SFT corpus both draw on public red-teaming
+datasets, so some prompts overlap. 37 of the 440 base prompts appear verbatim
+in the SFT training split (`00_data/train.json`); their question_ids are listed
+in `sorrybench_leaked_ids.json` (with the matching rule that produced them).
+`sorrybench_aggregate.py` excludes those ids (and their mutations) from every
+reported rate by default, so the paper figures are on the decontaminated
+403-prompt set. To regenerate the id list after changing the splits, re-run the
+overlap check and overwrite that JSON. Pass `--exclude-ids-file /dev/null` to
+the aggregator to report raw (contaminated) rates instead.
+
 ## Models × system prompts
 
 | Tag prefix      | Model path                          | Role                       |
@@ -57,8 +69,9 @@ Other knobs (env vars):
   `${SORRY_DIR}/data/sorry_bench/model_answer{_<mut>}/<tag>.with_thinking.jsonl`
 * Per-mutation judge scores:
   `${SORRY_DIR}/data/sorry_bench/model_judgment{_<mut>}/ft-mistral-7b-instruct-v0.2.jsonl`
-* Aggregated paper artifacts in `03_evaluates/results/sorrybench/`:
-  * `sorrybench_overall.tex` — main paper table
+* Aggregated artifacts in `03_evaluates/results/sorrybench/` (plus a summary
+  table printed to the terminal):
+  * `sorrybench_overall.csv` — base + mut-avg per model/prompt (the summary table)
   * `sorrybench_per_mutation.csv` — appendix detail
   * `sorrybench_per_category.csv` — per-category breakdown
 
