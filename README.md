@@ -1,4 +1,4 @@
-# Psychological Safety in Large Language Models
+# PsychoSafe: Eliciting Psychologically-Informed Refusals in Large Language Models
 
 This repository studies the idea that helpfulness and safety do not need to be a trade-off. The core goal is to build and evaluate refusal behavior that remains supportive, reflective, and psychologically grounded even when the user request is unsafe.
 
