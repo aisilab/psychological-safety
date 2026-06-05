@@ -2,13 +2,18 @@
 
 This repository studies the idea that helpfulness and safety do not need to be a trade-off. The core goal is to build and evaluate refusal behavior that remains supportive, reflective, and psychologically grounded even when the user request is unsafe.
 
+<p align="center">
+    <img src="_imgs/psychosafe_framework.png" width="700">
+</p>
+
+---
+
 ## Project Structure
 
 - `00_data/`: dataset creation, cleaning, splitting, and reasoning-augmented training files
-- `01_prompting/`: prompt-only baselines, system prompts, benchmark runners, and generated model outputs
+- `01_prompting/`: prompt-only baselines, system prompts, model output generation scripts, and generated model outputs
 - `02_finetunes/`: supervised fine-tuning scripts, configs, and model upload helpers
 - `03_evaluates/`: evaluation pipelines, judge prompts, benchmark scripts, and aggregated results
-- `teaser-psycho-refuse.png`: example refusal illustration used in documentation
 
 ## Workflow
 
@@ -71,11 +76,7 @@ pip install -e .
 
 ### `00_data`
 
-Contains the main train/validation/test files, the full merged dataset, reasoning-augmented data, and helper scripts such as:
-
-- `split_data.py`
-- `check_leakage.py`
-- `check_length_dist.py`
+Contains the main train/validation/test files, the full merged dataset, reasoning-augmented data, and helper scripts.
 
 ### `01_prompting`
 
