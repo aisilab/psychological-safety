@@ -8,6 +8,23 @@ This repository studies the idea that helpfulness and safety do not need to be a
 
 ---
 
+## Related Paper
+
+Please cite this paper if you find this work useful:
+
+```
+@misc{barmina2026psychosafeelicitingpsychologicallyinformedrefusals,
+      title={PsychoSafe: Eliciting Psychologically-Informed Refusals in Large Language Models}, 
+      author={Gianluca Barmina and Federico Torrielli and Sven Harms and Jacob Nielsen and Felix Mächtle and Stine Lyngsø Beltoft and Peter Schneider-Kamp and Thomas Eisenbarth and Lukas Galke Poech and Anne Lauscher},
+      year={2026},
+      eprint={2606.09697},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2606.09697},  
+}
+```
+
+
 ## Project Structure
 
 - `00_data/`: dataset creation, cleaning, splitting, and reasoning-augmented training files
