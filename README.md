@@ -1,14 +1,36 @@
-# Psychological Safety in Large Language Models
+# PsychoSafe: Eliciting Psychologically-Informed Refusals in Large Language Models
 
 This repository studies the idea that helpfulness and safety do not need to be a trade-off. The core goal is to build and evaluate refusal behavior that remains supportive, reflective, and psychologically grounded even when the user request is unsafe.
+
+<p align="center">
+    <img src="_imgs/psychosafe_framework.png" width="600">
+</p>
+
+---
+
+## Related Paper
+
+Please cite this paper if you find this work useful:
+
+```
+@misc{barmina2026psychosafeelicitingpsychologicallyinformedrefusals,
+      title={PsychoSafe: Eliciting Psychologically-Informed Refusals in Large Language Models}, 
+      author={Gianluca Barmina and Federico Torrielli and Sven Harms and Jacob Nielsen and Felix Mächtle and Stine Lyngsø Beltoft and Peter Schneider-Kamp and Thomas Eisenbarth and Lukas Galke Poech and Anne Lauscher},
+      year={2026},
+      eprint={2606.09697},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2606.09697},  
+}
+```
+
 
 ## Project Structure
 
 - `00_data/`: dataset creation, cleaning, splitting, and reasoning-augmented training files
-- `01_prompting/`: prompt-only baselines, system prompts, benchmark runners, and generated model outputs
+- `01_prompting/`: prompt-only baselines, system prompts, model output generation scripts, and generated model outputs
 - `02_finetunes/`: supervised fine-tuning scripts, configs, and model upload helpers
 - `03_evaluates/`: evaluation pipelines, judge prompts, benchmark scripts, and aggregated results
-- `teaser-psycho-refuse.png`: example refusal illustration used in documentation
 
 ## Workflow
 
@@ -71,11 +93,7 @@ pip install -e .
 
 ### `00_data`
 
-Contains the main train/validation/test files, the full merged dataset, reasoning-augmented data, and helper scripts such as:
-
-- `split_data.py`
-- `check_leakage.py`
-- `check_length_dist.py`
+Contains the main train/validation/test files, the full merged dataset, reasoning-augmented data, and helper scripts.
 
 ### `01_prompting`
 

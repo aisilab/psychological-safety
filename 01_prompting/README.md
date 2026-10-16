@@ -57,57 +57,9 @@ python run_benchmark_vllm.py \
 
 Some of the additional vLLM-specific arguments are model specific. In particular `--language-model-only` is used for the text-only mode of Qwen3.5 models (which are multimodal). The `--reasoning-parser` is also used only for reasoning models.
 
-
-## Common Safety Benchmarks
-
-| Dataset | `--dataset` | `--prompt-field` | Notes |
-|---|---|---|---|
-| AdvBench | `walledai/AdvBench` | `prompt` | |
-| TruthfulQA | `truthful_qa` | `question` | add `--dataset-config generation --dataset-split validation` |
-| BeaverTails | `PKU-Alignment/BeaverTails` | `prompt` | add `--dataset-config 30k_test` |
-| Do-Not-Answer | `LibrAI/do-not-answer` | `question` | |
-| WildJailbreak | `allenai/wildjailbreak` | `vanilla_prompt` | |
-| HH-RLHF | `Anthropic/hh-rlhf` | `chosen` | |
-| Harmful Dataset | `LLM-LAT/harmful-dataset` | `prompt` | |
-
 ## Examples
 
 ```bash
-# AdvBench
-python run_benchmark.py \
-  --model meta-llama/Llama-3.2-1B-Instruct \
-  --dataset walledai/AdvBench \
-  --prompt-field prompt \
-  --output results/advbench.json \
-  --max-samples 100 \
-  --hf-token your-hf-token
-
-# TruthfulQA
-python run_benchmark.py \
-  --model meta-llama/Llama-3.2-1B-Instruct \
-  --dataset truthful_qa \
-  --dataset-config generation \
-  --dataset-split validation \
-  --prompt-field question \
-  --output results/truthfulqa.json \
-  --hf-token your-hf-token
-
-# BeaverTails
-python run_benchmark.py \
-  --model mistralai/Mistral-7B-Instruct-v0.3 \
-  --dataset PKU-Alignment/BeaverTails \
-  --dataset-config 30k_test \
-  --prompt-field prompt \
-  --output results/beavertails.json \
-  --hf-token your-hf-token
-
-# Do-Not-Answer
-python run_benchmark.py \
-  --model mistralai/Mistral-7B-Instruct-v0.3 \
-  --dataset LibrAI/do-not-answer \
-  --prompt-field question \
-  --output results/do-not-answer.json \
-  --hf-token your-hf-token
 
 # Local JSON file (e.g., our own val set)
 python run_benchmark.py \
