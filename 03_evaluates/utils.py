@@ -7,13 +7,16 @@ import random
 from itertools import combinations
 from scipy.stats import spearmanr, pearsonr
 
-def split_reasoning_traces(text: str, reasoning_token: str = "</think>") -> Tuple[str|None, str]:
+
+def split_reasoning_traces(
+    text: str, reasoning_token: str = "</think>"
+) -> Tuple[str | None, str]:
     if reasoning_token in text:
         reasoning, answer = text.split(reasoning_token, 1)
         return reasoning.strip(), answer.strip()
     else:
         return None, text.strip()
-    
+
 
 def extract_criteria_from_judge_answer(judge_answer):
     """
@@ -32,7 +35,9 @@ def extract_criteria_from_judge_answer(judge_answer):
         r"Criterion\s*(\d+)\b(.*?)(?=Criterion\s*\d+\b|$)",
         flags=re.IGNORECASE | re.DOTALL,
     )
-    rating_pattern = re.compile(r"Rating\s*:\s*([0-9]+(?:\.[0-9]+)?)", flags=re.IGNORECASE)
+    rating_pattern = re.compile(
+        r"Rating\s*:\s*([0-9]+(?:\.[0-9]+)?)", flags=re.IGNORECASE
+    )
     yes_no_pattern = re.compile(
         r"(?:Refusal\s+presence|External\s+references?\s+presence|Presence)\s*:\s*(Yes|No)",
         flags=re.IGNORECASE,
@@ -76,7 +81,11 @@ def append_criteria_to_judgements_json(json_filename, output_filename=None):
         judgments = payload.get("judgements", [])
 
     for item in judgments:
-        judge_answer = item.get("judge_answer") or item.get("judgment") or item.get("full_judge_output", "")
+        judge_answer = (
+            item.get("judge_answer")
+            or item.get("judgment")
+            or item.get("full_judge_output", "")
+        )
         item.update(extract_criteria_from_judge_answer(judge_answer))
 
     with open(output_filename, "w") as f:
@@ -175,12 +184,18 @@ def aggregate_criteria_by_model(
             prompts = {row.get("prompt") for row in rows if row.get("prompt")}
             prompts_per_file.append(prompts)
 
-        common_prompts = set.intersection(*prompts_per_file) if prompts_per_file else set()
+        common_prompts = (
+            set.intersection(*prompts_per_file) if prompts_per_file else set()
+        )
         if not common_prompts:
-            raise ValueError("force_sync=True but no common prompt text was found across all files.")
+            raise ValueError(
+                "force_sync=True but no common prompt text was found across all files."
+            )
 
         base_rows_all = normalized_rows_per_model[0]
-        base_rows = [row for row in base_rows_all if row.get("prompt") in common_prompts]
+        base_rows = [
+            row for row in base_rows_all if row.get("prompt") in common_prompts
+        ]
         base_prompts = [row.get("prompt") for row in base_rows]
 
         aligned_rows_per_model = []
@@ -210,11 +225,19 @@ def aggregate_criteria_by_model(
             if current_ids != base_ids:
                 # find mismatched indices for better error message
                 print(f"len base_rows: {len(base_rows)}, len current_rows: {len(rows)}")
-                missing_indices_in_base = [i for i, row in enumerate(rows) if row["row_id"] not in base_ids]
-                missing_indices_in_current = [i for i, row in enumerate(base_rows) if row["row_id"] not in current_ids]
+                missing_indices_in_base = [
+                    i for i, row in enumerate(rows) if row["row_id"] not in base_ids
+                ]
+                missing_indices_in_current = [
+                    i
+                    for i, row in enumerate(base_rows)
+                    if row["row_id"] not in current_ids
+                ]
                 print(f"Missing indices in base: {missing_indices_in_base}")
                 print(f"Missing indices in current: {missing_indices_in_current}")
-                raise ValueError(f"Input judgment files do not align by id/index in the same order.")
+                raise ValueError(
+                    f"Input judgment files do not align by id/index in the same order."
+                )
 
     per_model_answers = {}
     if include_model_answers:
@@ -235,7 +258,9 @@ def aggregate_criteria_by_model(
 
         if include_model_answers:
             for model_name in model_names:
-                aggregated_row[f"model_answer_{model_name}"] = per_model_answers[model_name][i]
+                aggregated_row[f"model_answer_{model_name}"] = per_model_answers[
+                    model_name
+                ][i]
 
             # Keep legacy keys when there is a unique v0/v1 source.
             if has_unique_v0:
@@ -370,13 +395,17 @@ def compute_and_print_judge_metrics(
                     values_by_judge[judge][version][criterion_key].append(numeric_value)
                 normalized_value = _normalize_scalar_to_unit_interval(value)
                 if normalized_value is not None:
-                    per_row_normalized_values.setdefault(judge, {}).setdefault(version, {})[criterion_key] = normalized_value
+                    per_row_normalized_values.setdefault(judge, {}).setdefault(
+                        version, {}
+                    )[criterion_key] = normalized_value
 
             if criterion in boolean_criteria:
                 binary_value = _to_binary(value)
                 if binary_value is not None:
                     values_by_judge[judge][version][criterion_key].append(binary_value)
-                    per_row_normalized_values.setdefault(judge, {}).setdefault(version, {})[criterion_key] = binary_value
+                    per_row_normalized_values.setdefault(judge, {}).setdefault(
+                        version, {}
+                    )[criterion_key] = binary_value
 
         # Build one composite score per row/judge/version only when all tracked criteria are present.
         for judge, versions_dict in per_row_normalized_values.items():
@@ -466,7 +495,11 @@ def compute_and_print_judge_metrics(
 
             overall_stats = _stats(overall_scores_by_judge[judge][version])
             metrics[judge][version]["overall_score"] = overall_stats
-            overall_pct = "n/a" if overall_stats["mean"] is None else f"{overall_stats['mean'] * 100:.2f}%"
+            overall_pct = (
+                "n/a"
+                if overall_stats["mean"] is None
+                else f"{overall_stats['mean'] * 100:.2f}%"
+            )
             print("    Overall score (0..1 normalized across all criteria)")
             print(
                 f"      score: mean={_fmt(overall_stats['mean'])} ({overall_pct}), "
@@ -489,27 +522,53 @@ def compute_and_print_judge_metrics(
                 v0_mean = metrics[judge][from_version]["scalar"][criterion_key]["mean"]
                 v1_mean = metrics[judge][to_version]["scalar"][criterion_key]["mean"]
                 change = _pct_change(v0_mean, v1_mean)
-                metrics[judge]["delta_all_pairs"][pair_label]["scalar"][criterion_key] = change
+                metrics[judge]["delta_all_pairs"][pair_label]["scalar"][
+                    criterion_key
+                ] = change
 
-                change_pct_text = "n/a" if change["change_pct"] is None else f"{change['change_pct']:+.2f}%"
-                print(f"      {criterion_key}: {change['direction']} ({change_pct_text})")
+                change_pct_text = (
+                    "n/a"
+                    if change["change_pct"] is None
+                    else f"{change['change_pct']:+.2f}%"
+                )
+                print(
+                    f"      {criterion_key}: {change['direction']} ({change_pct_text})"
+                )
 
             print("    Boolean criteria")
             for criterion in sorted(boolean_criteria):
                 criterion_key = f"criterion_{criterion}"
-                v0_yes_rate = metrics[judge][from_version]["boolean"][criterion_key]["yes_rate"]
-                v1_yes_rate = metrics[judge][to_version]["boolean"][criterion_key]["yes_rate"]
+                v0_yes_rate = metrics[judge][from_version]["boolean"][criterion_key][
+                    "yes_rate"
+                ]
+                v1_yes_rate = metrics[judge][to_version]["boolean"][criterion_key][
+                    "yes_rate"
+                ]
                 change = _pct_change(v0_yes_rate, v1_yes_rate)
-                metrics[judge]["delta_all_pairs"][pair_label]["boolean"][criterion_key] = change
+                metrics[judge]["delta_all_pairs"][pair_label]["boolean"][
+                    criterion_key
+                ] = change
 
-                change_pct_text = "n/a" if change["change_pct"] is None else f"{change['change_pct']:+.2f}%"
-                print(f"      {criterion_key}: {change['direction']} ({change_pct_text})")
+                change_pct_text = (
+                    "n/a"
+                    if change["change_pct"] is None
+                    else f"{change['change_pct']:+.2f}%"
+                )
+                print(
+                    f"      {criterion_key}: {change['direction']} ({change_pct_text})"
+                )
 
             from_score = metrics[judge][from_version]["overall_score"]["mean"]
             to_score = metrics[judge][to_version]["overall_score"]["mean"]
             score_change = _pct_change(from_score, to_score)
-            metrics[judge]["delta_all_pairs"][pair_label]["overall_score"] = score_change
-            score_change_pct_text = "n/a" if score_change["change_pct"] is None else f"{score_change['change_pct']:+.2f}%"
+            metrics[judge]["delta_all_pairs"][pair_label]["overall_score"] = (
+                score_change
+            )
+            score_change_pct_text = (
+                "n/a"
+                if score_change["change_pct"] is None
+                else f"{score_change['change_pct']:+.2f}%"
+            )
             print("    Overall score")
             print(f"      score: {score_change['direction']} ({score_change_pct_text})")
 
@@ -533,32 +592,43 @@ def compute_and_print_human_metrics(
     elif "paired_responses" in payload:
         rows = []
         for pair in payload["paired_responses"]:
-            if "a" in pair: rows.append(pair["a"])
-            if "b" in pair: rows.append(pair["b"])
+            if "a" in pair:
+                rows.append(pair["a"])
+            if "b" in pair:
+                rows.append(pair["b"])
     else:
         rows = []
 
     criteria_to_track = set(scalar_criteria).union(boolean_criteria)
 
     def _to_float(value):
-        if value is None or isinstance(value, bool): return None
-        if isinstance(value, (int, float)): return float(value)
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
         if isinstance(value, str):
             stripped = value.strip()
-            if not stripped: return None
-            try: return float(stripped)
-            except ValueError: return None
+            if not stripped:
+                return None
+            try:
+                return float(stripped)
+            except ValueError:
+                return None
         return None
 
     def _to_binary(value):
-        if isinstance(value, bool): return 1.0 if value else 0.0
+        if isinstance(value, bool):
+            return 1.0 if value else 0.0
         if isinstance(value, (int, float)):
-            if value in (0, 1): return float(value)
+            if value in (0, 1):
+                return float(value)
             return None
         if isinstance(value, str):
             normalized = value.strip().lower()
-            if normalized in {"yes", "true", "1"}: return 1.0
-            if normalized in {"no", "false", "0"}: return 0.0
+            if normalized in {"yes", "true", "1"}:
+                return 1.0
+            if normalized in {"no", "false", "0"}:
+                return 0.0
         return None
 
     values_by_version = {
@@ -569,11 +639,11 @@ def compute_and_print_human_metrics(
 
     for row in rows:
         version = row.get("source_split", "overall")
-        
+
         for criterion in criteria_to_track:
             val = row.get(f"criteria_{criterion}", row.get(f"criterion_{criterion}"))
             criterion_key = f"criterion_{criterion}"
-            
+
             if criterion in scalar_criteria:
                 numeric_value = _to_float(val)
                 if numeric_value is not None:
@@ -602,11 +672,13 @@ def compute_and_print_human_metrics(
 
     metrics = {}
     print(f"Metric summary from: {json_filename} (Human)")
-    
+
     for version in ("overall", "v0", "v1"):
-        if version in ("v0", "v1") and all(len(v) == 0 for v in values_by_version[version].values()):
+        if version in ("v0", "v1") and all(
+            len(v) == 0 for v in values_by_version[version].values()
+        ):
             continue
-            
+
         metrics[version] = {"scalar": {}, "boolean": {}}
         print(f"\n  Version: {version}")
         print("    Scalar criteria")
@@ -639,6 +711,7 @@ def compute_and_print_human_metrics(
 
     return metrics
 
+
 def create_annotator_set(model_answer_path):
     with open(model_answer_path, "r") as f:
         payload = json.load(f)
@@ -668,7 +741,9 @@ def create_annotator_set(model_answer_path):
 
         response = item.get("response")
         if isinstance(response, str) and response:
-            _, extracted_answer = split_reasoning_traces(response, reasoning_token="</think>")
+            _, extracted_answer = split_reasoning_traces(
+                response, reasoning_token="</think>"
+            )
             return extracted_answer
 
         return ""
@@ -764,7 +839,9 @@ def merge_annotator_with_trace(annotator_path, trace_path, output_path=None):
             item_id = item.get("id")
 
             if item_id not in trace_by_id:
-                raise ValueError(f"Missing trace mapping for annotator item id: {item_id}")
+                raise ValueError(
+                    f"Missing trace mapping for annotator item id: {item_id}"
+                )
 
             trace_row = trace_by_id[item_id]
 
@@ -805,7 +882,9 @@ def merge_annotator_with_trace(annotator_path, trace_path, output_path=None):
     }
 
 
-def compute_human_judge_correlation(all_judgements_path, annotation_path, output_path=None):
+def compute_human_judge_correlation(
+    all_judgements_path, annotation_path, output_path=None
+):
     """
     Calculate the correlation between model judgments and human judgments.
     """
@@ -832,7 +911,7 @@ def compute_human_judge_correlation(all_judgements_path, annotation_path, output
 
     with open(all_judgements_path, "r") as f:
         compare_data = json.load(f)
-    
+
     with open(annotation_path, "r") as f:
         annotated_data = json.load(f)
 
@@ -842,7 +921,7 @@ def compute_human_judge_correlation(all_judgements_path, annotation_path, output
     for row in annotated_data.get("rows", []):
         prompt = row.get("full_example", {}).get("prompt", "").strip()
         split = row.get("source_split")
-        
+
         for i in range(1, 5):
             crit_val = _to_numeric(row.get(f"criteria_{i}"))
             if crit_val is not None:
@@ -857,32 +936,32 @@ def compute_human_judge_correlation(all_judgements_path, annotation_path, output
     correlations_data = {
         key: {
             "overall": {"x": [], "y": []},
-            **{i: {"x": [], "y": []} for i in range(1, 5)}
+            **{i: {"x": [], "y": []} for i in range(1, 5)},
         }
         for key in all_keys
     }
 
     for res in compare_data.get("results", []):
         prompt = res.get("prompt", "").strip()
-        
+
         for model in models:
             # Check if this is a v0 or v1 model to match the human split
             split = "v1" if "_v1" in model else "v0"
             base_model = model.replace("_v0", "").replace("_v1", "")
             combined_key = f"{base_model}_combined"
-            
+
             for i in range(1, 5):
                 model_key = f"{model}_criterion_{i}"
                 model_val = _to_numeric(res.get(model_key))
                 human_val = human_gt.get((prompt, split, i))
-                
+
                 if model_val is not None and human_val is not None:
                     # Append strictly for the version specific key
                     correlations_data[model][i]["x"].append(human_val)
                     correlations_data[model][i]["y"].append(model_val)
                     correlations_data[model]["overall"]["x"].append(human_val)
                     correlations_data[model]["overall"]["y"].append(model_val)
-                    
+
                     # Append for the combined model key (v0 + v1)
                     correlations_data[combined_key][i]["x"].append(human_val)
                     correlations_data[combined_key][i]["y"].append(model_val)
@@ -890,7 +969,7 @@ def compute_human_judge_correlation(all_judgements_path, annotation_path, output
                     correlations_data[combined_key]["overall"]["y"].append(model_val)
 
     def safe_pearsonr(x, y):
-        if len(x) < 2: 
+        if len(x) < 2:
             return (0.0, 1.0)
         try:
             corr, p_val = pearsonr(x, y)
@@ -901,7 +980,7 @@ def compute_human_judge_correlation(all_judgements_path, annotation_path, output
             return (0.0, 1.0)
 
     def safe_spearmanr(x, y):
-        if len(x) < 2: 
+        if len(x) < 2:
             return (0.0, 1.0)
         try:
             corr, p_val = spearmanr(x, y)
@@ -921,6 +1000,7 @@ def compute_human_judge_correlation(all_judgements_path, annotation_path, output
             return 0.0
         try:
             from sklearn.metrics import cohen_kappa_score
+
             kappa = cohen_kappa_score(x, y)
             if math.isnan(kappa):
                 return 0.0
@@ -938,31 +1018,36 @@ def compute_human_judge_correlation(all_judgements_path, annotation_path, output
                 "pearson_corr": safe_pearsonr(x, y),
                 "spearman_corr": safe_spearmanr(x, y),
                 "agreement": safe_agreement(x, y),
-                "cohen_kappa": safe_cohen_kappa(x, y)
+                "cohen_kappa": safe_cohen_kappa(x, y),
             }
             if i == 4:
-                print(f"Metrics for {key} criterion_{i}: {output_metrics[key][f'criterion_{i}']} (n={len(x)})")
+                print(
+                    f"Metrics for {key} criterion_{i}: {output_metrics[key][f'criterion_{i}']} (n={len(x)})"
+                )
                 print(f"HUM: {x}")
                 print(f"MOD: {y}")
                 print("------")
-        
+
         x_all = correlations_data[key]["overall"]["x"]
         y_all = correlations_data[key]["overall"]["y"]
         output_metrics[key]["overall"] = {
             "pearson_corr": safe_pearsonr(x_all, y_all),
             "spearman_corr": safe_spearmanr(x_all, y_all),
             "agreement": safe_agreement(x_all, y_all),
-            "cohen_kappa": safe_cohen_kappa(x_all, y_all)
+            "cohen_kappa": safe_cohen_kappa(x_all, y_all),
         }
 
-    print("Pearson Correlation, Spearman Correlation, Agreement, and Cohen's Kappa between Human and Judges:")
+    print(
+        "Pearson Correlation, Spearman Correlation, Agreement, and Cohen's Kappa between Human and Judges:"
+    )
     print(json.dumps(output_metrics, indent=4))
-    
+
     if output_path is not None:
         with open(output_path, "w") as f:
             json.dump(output_metrics, f, indent=4)
-            
+
     return output_metrics
+
 
 def calculate_metrics_for_judge_validation():
     judgment_files = [
@@ -985,8 +1070,14 @@ def calculate_metrics_for_judge_validation():
     compare_all_files = judgment_files
     compare_all_output = "03_evaluates/output/compare_all_judges.json"
 
-    aggregate_criteria_by_model(compare_all_files, compare_all_names, compare_all_output, include_model_answers=True)
+    aggregate_criteria_by_model(
+        compare_all_files,
+        compare_all_names,
+        compare_all_output,
+        include_model_answers=True,
+    )
     compute_and_print_judge_metrics(compare_all_output)
+
 
 def calculate_metrics_for_judge_full_outputs():
     judgment_files = [
@@ -1001,8 +1092,14 @@ def calculate_metrics_for_judge_full_outputs():
     compare_all_files = judgment_files
     compare_all_output = "03_evaluates/output/compare_all_judges_qwen3.5_full.json"
 
-    aggregate_criteria_by_model(compare_all_files, compare_all_names, compare_all_output, include_model_answers=True)
+    aggregate_criteria_by_model(
+        compare_all_files,
+        compare_all_names,
+        compare_all_output,
+        include_model_answers=True,
+    )
     compute_and_print_judge_metrics(compare_all_output)
+
 
 def calculate_metrics_for_judge_full_outputs_sft():
     judgment_files = [
@@ -1017,8 +1114,14 @@ def calculate_metrics_for_judge_full_outputs_sft():
     compare_all_files = judgment_files
     compare_all_output = "03_evaluates/output/compare_all_judges_qwen3.5_sft.json"
 
-    aggregate_criteria_by_model(compare_all_files, compare_all_names, compare_all_output, include_model_answers=True)
+    aggregate_criteria_by_model(
+        compare_all_files,
+        compare_all_names,
+        compare_all_output,
+        include_model_answers=True,
+    )
     compute_and_print_judge_metrics(compare_all_output)
+
 
 def calculate_metrics_for_judge_full_outputs_base_vs_sft():
     judgment_files = [
@@ -1035,11 +1138,20 @@ def calculate_metrics_for_judge_full_outputs_base_vs_sft():
         "qwen3.5-397b-a17b_v1_sft",
     ]
     compare_all_files = judgment_files
-    compare_all_output = "03_evaluates/output/compare_all_judges_qwen3.5_full_vs_sft.json"
+    compare_all_output = (
+        "03_evaluates/output/compare_all_judges_qwen3.5_full_vs_sft.json"
+    )
 
-    aggregate_criteria_by_model(compare_all_files, compare_all_names, compare_all_output, include_model_answers=True, force_sync=True)
+    aggregate_criteria_by_model(
+        compare_all_files,
+        compare_all_names,
+        compare_all_output,
+        include_model_answers=True,
+        force_sync=True,
+    )
     compute_and_print_judge_metrics(compare_all_output)
-    
+
+
 def generate_annotation_set():
     selected_answers_path = "03_evaluates/output/selected_responses.json"
 
@@ -1055,7 +1167,9 @@ def calculate_metrics_for_human_validation():
         output_path="03_evaluates/output/annotated_responses_merged.json",
     )
 
-    compute_and_print_human_metrics("03_evaluates/output/annotated_responses_merged.json")
+    compute_and_print_human_metrics(
+        "03_evaluates/output/annotated_responses_merged.json"
+    )
 
     compute_human_judge_correlation(
         all_judgements_path=compare_all_output,
@@ -1063,12 +1177,14 @@ def calculate_metrics_for_human_validation():
         output_path="03_evaluates/output/human_judge_correlation.json",
     )
 
+
 def main():
     # calculate_metrics_for_judge_full_outputs()
 
     # calculate_metrics_for_judge_full_outputs_sft()
 
     calculate_metrics_for_judge_full_outputs_base_vs_sft()
+
 
 if __name__ == "__main__":
     main()

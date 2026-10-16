@@ -27,8 +27,7 @@ from pathlib import Path
 from urllib.request import urlopen
 
 XSTEST_CSV_URL = (
-    "https://raw.githubusercontent.com/paul-rottger/xstest/main/"
-    "xstest_prompts.csv"
+    "https://raw.githubusercontent.com/paul-rottger/xstest/main/xstest_prompts.csv"
 )
 
 

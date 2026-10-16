@@ -48,7 +48,9 @@ def main():
     reserved_prompts = set()
     if SYSTEM_PROMPT_FILE.exists():
         reserved_prompts = extract_system_prompt_examples(SYSTEM_PROMPT_FILE)
-        print(f"Reserved {len(reserved_prompts)} example(s) from system prompt for train split.")
+        print(
+            f"Reserved {len(reserved_prompts)} example(s) from system prompt for train split."
+        )
 
     with open(INPUT_FILE) as f:
         data = json.load(f)
@@ -86,7 +88,9 @@ def main():
         counts = defaultdict(int)
         for item in split_data:
             counts[item["risk cluster"]] += 1
-        print(f"{split_name}: {len(split_data)} examples ({dict(sorted(counts.items()))})")
+        print(
+            f"{split_name}: {len(split_data)} examples ({dict(sorted(counts.items()))})"
+        )
 
 
 if __name__ == "__main__":

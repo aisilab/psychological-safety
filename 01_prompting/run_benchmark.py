@@ -110,9 +110,10 @@ def run_model(
         rate = (i - start_idx + 1) / max(elapsed, 1e-6)
         remaining = (total - i - 1) / max(rate, 1e-6)
         print(
-            f"  [{i+1}/{total}] Generating... "
+            f"  [{i + 1}/{total}] Generating... "
             f"({rate:.1f} samples/s, ~{remaining:.0f}s remaining)",
-            end="\r", flush=True,
+            end="\r",
+            flush=True,
         )
 
         messages = [
@@ -136,7 +137,9 @@ def run_model(
             except Exception:
                 print("  [INFO] apply_chat_template failed, using fallback formatting.")
                 text = f"<|system|>{system_prompt}\n<|user|>{prompt}\n<|assistant|>"
-                input_ids = tokenizer(text, return_tensors="pt").input_ids.to(model.device)
+                input_ids = tokenizer(text, return_tensors="pt").input_ids.to(
+                    model.device
+                )
 
             with torch.no_grad():
                 output_ids = model.generate(
@@ -146,12 +149,12 @@ def run_model(
                     pad_token_id=tokenizer.pad_token_id,
                 )
 
-            new_tokens = output_ids[0][input_ids.shape[-1]:]
+            new_tokens = output_ids[0][input_ids.shape[-1] :]
             response = tokenizer.decode(new_tokens, skip_special_tokens=False).strip()
             results.append({"prompt": prompt, "response": response})
 
         except Exception as e:
-            print(f"\n  [WARNING] Sample {i+1} failed: {e}")
+            print(f"\n  [WARNING] Sample {i + 1} failed: {e}")
             results.append({"prompt": prompt, "response": None, "error": str(e)})
 
     elapsed_total = time.time() - t0
@@ -163,29 +166,55 @@ def run_model(
 def main():
     parser = argparse.ArgumentParser(description="Run HF model on safety benchmarks.")
     parser.add_argument("--model", required=True, help="HuggingFace model ID")
-    parser.add_argument("--system-prompt", default="systemprompt-v0.txt",
-                        help="Path to system prompt file (default: systemprompt-v0.txt)")
-    parser.add_argument("--dataset", required=True,
-                        help="HuggingFace dataset ID (e.g. walledai/AdvBench)")
-    parser.add_argument("--dataset-config", default=None,
-                        help="Dataset config/subset name if needed")
-    parser.add_argument("--dataset-split", default="train",
-                        help="Dataset split to use (default: train)")
-    parser.add_argument("--prompt-field", default="prompt",
-                        help="Field name in the dataset containing the prompt text (default: prompt). "
-                             "Supports dot notation for nested fields (e.g. question.stem).")
-    parser.add_argument("--output", required=True,
-                        help="Output JSON file path")
-    parser.add_argument("--max-samples", type=int, default=None,
-                        help="Maximum number of samples to process (default: all)")
-    parser.add_argument("--max-new-tokens", type=int, default=4096,
-                        help="Maximum new tokens to generate per response (default: 4096)")
-    parser.add_argument("--device", default="auto",
-                        help="Device: auto, cpu, cuda, mps (default: auto)")
-    parser.add_argument("--resume", action="store_true",
-                        help="Resume from existing output file if it exists")
-    parser.add_argument("--hf-token", required=True, default=None,
-                        help="HuggingFace API token for accessing gated models/datasets")
+    parser.add_argument(
+        "--system-prompt",
+        default="systemprompt-v0.txt",
+        help="Path to system prompt file (default: systemprompt-v0.txt)",
+    )
+    parser.add_argument(
+        "--dataset",
+        required=True,
+        help="HuggingFace dataset ID (e.g. walledai/AdvBench)",
+    )
+    parser.add_argument(
+        "--dataset-config", default=None, help="Dataset config/subset name if needed"
+    )
+    parser.add_argument(
+        "--dataset-split", default="train", help="Dataset split to use (default: train)"
+    )
+    parser.add_argument(
+        "--prompt-field",
+        default="prompt",
+        help="Field name in the dataset containing the prompt text (default: prompt). "
+        "Supports dot notation for nested fields (e.g. question.stem).",
+    )
+    parser.add_argument("--output", required=True, help="Output JSON file path")
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Maximum number of samples to process (default: all)",
+    )
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=4096,
+        help="Maximum new tokens to generate per response (default: 4096)",
+    )
+    parser.add_argument(
+        "--device", default="auto", help="Device: auto, cpu, cuda, mps (default: auto)"
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from existing output file if it exists",
+    )
+    parser.add_argument(
+        "--hf-token",
+        required=True,
+        default=None,
+        help="HuggingFace API token for accessing gated models/datasets",
+    )
     args = parser.parse_args()
 
     # Load system prompt
@@ -199,7 +228,9 @@ def main():
         ds = json.loads(dataset_path.read_text(encoding="utf-8"))
         print(f"Dataset size: {len(ds)} rows. Field: '{args.prompt_field}'")
     else:
-        print(f"Loading dataset: {args.dataset} / config={args.dataset_config} / split={args.dataset_split}")
+        print(
+            f"Loading dataset: {args.dataset} / config={args.dataset_config} / split={args.dataset_split}"
+        )
         ds = load_dataset(args.dataset, args.dataset_config, split=args.dataset_split)
         print(f"Dataset size: {len(ds)} rows. Field: '{args.prompt_field}'")
 
@@ -241,7 +272,9 @@ def main():
         "results": results,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     print(f"Results saved to: {out_path}")
 
 

@@ -30,7 +30,9 @@ def load_prompt_texts(prompts_dir: Path) -> dict[str, str]:
     return texts
 
 
-def check_leakage(split_name: str, split_data: list[dict], prompt_texts: dict[str, str]):
+def check_leakage(
+    split_name: str, split_data: list[dict], prompt_texts: dict[str, str]
+):
     """Check if any example's prompt or answer appears in any system prompt file."""
     leaks = []
     for i, item in enumerate(split_data):
@@ -41,19 +43,23 @@ def check_leakage(split_name: str, split_data: list[dict], prompt_texts: dict[st
             check_text = text if field == "prompt" else text[:200]
             for fname, prompt_content in prompt_texts.items():
                 if check_text in prompt_content:
-                    leaks.append({
-                        "split": split_name,
-                        "index": i,
-                        "field": field,
-                        "file": fname,
-                        "risk_cluster": item.get("risk cluster", "N/A"),
-                        "text_preview": text[:100],
-                    })
+                    leaks.append(
+                        {
+                            "split": split_name,
+                            "index": i,
+                            "field": field,
+                            "file": fname,
+                            "risk_cluster": item.get("risk cluster", "N/A"),
+                            "text_preview": text[:100],
+                        }
+                    )
     return leaks
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Check for val/test leakage into system prompts.")
+    parser = argparse.ArgumentParser(
+        description="Check for val/test leakage into system prompts."
+    )
     parser.add_argument(
         "--prompts-dir",
         type=Path,
@@ -67,7 +73,9 @@ def main():
         print(f"No .txt files found in {args.prompts_dir}")
         return
 
-    print(f"Checking against {len(prompt_texts)} system prompt file(s): {list(prompt_texts.keys())}")
+    print(
+        f"Checking against {len(prompt_texts)} system prompt file(s): {list(prompt_texts.keys())}"
+    )
     print()
 
     total_leaks = []
@@ -83,7 +91,9 @@ def main():
     if total_leaks:
         print(f"LEAKAGE DETECTED: {len(total_leaks)} match(es) found!\n")
         for leak in total_leaks:
-            print(f"  Split: {leak['split']}, Index: {leak['index']}, Field: {leak['field']}")
+            print(
+                f"  Split: {leak['split']}, Index: {leak['index']}, Field: {leak['field']}"
+            )
             print(f"  System prompt file: {leak['file']}")
             print(f"  Risk cluster: {leak['risk_cluster']}")
             print(f"  Preview: {leak['text_preview']}...")

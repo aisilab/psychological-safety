@@ -1,6 +1,7 @@
 import json
 from tqdm import tqdm
 
+
 def is_peft_model(model):
     is_peft = isinstance(model.active_adapters, list) and len(model.active_adapters) > 0
     try:
@@ -10,9 +11,11 @@ def is_peft_model(model):
         pass
     return is_peft
 
+
 def load_jsonl(file_id):
     with open(file_id, "r") as f:
         return [json.loads(line) for line in f.readlines() if line.strip()]
+
 
 def generate_conversation(rows, think_start="<think>", think_end="</think>"):
     """Convert rows with 'prompt'/'answer' fields to 'messages' format.
@@ -23,7 +26,7 @@ def generate_conversation(rows, think_start="<think>", think_end="</think>"):
     converted = []
 
     for r in tqdm(rows, desc="Generating conversations"):
-        if 'prompt' in r and 'answer' in r:
+        if "prompt" in r and "answer" in r:
             answer = r["answer"]
             reasoning = r.get("reasoning_language") or r.get("reasoning")
             if reasoning:
@@ -35,16 +38,26 @@ def generate_conversation(rows, think_start="<think>", think_end="</think>"):
                 {"role": "assistant", "content": answer},
             ]
             converted.append(dict(messages=messages))
-        elif 'messages' in r:
-            converted.append(dict(messages=r['messages']))
+        elif "messages" in r:
+            converted.append(dict(messages=r["messages"]))
         else:
-            raise ValueError(f"Row must have either 'prompt'+'answer' or 'messages' keys, got: {list(r.keys())}")
+            raise ValueError(
+                f"Row must have either 'prompt'+'answer' or 'messages' keys, got: {list(r.keys())}"
+            )
     return converted
+
 
 def formatting_prompts_func(samples, tokenizer, verbose=False):
     convos = samples["messages"]
-    texts = [tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convos]
-    return { "text" : texts, }
+    texts = [
+        tokenizer.apply_chat_template(
+            convo, tokenize=False, add_generation_prompt=False
+        )
+        for convo in convos
+    ]
+    return {
+        "text": texts,
+    }
     # [Keeping this for know if we need to debug]
     # texts = []
     # for convo in tqdm(samples, desc="Formatting prompts"):

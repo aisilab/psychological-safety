@@ -1,6 +1,7 @@
 """
 https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Qwen3_5_MoE.ipynb#scrollTo=ECH-7XD-DKXd
 """
+
 import unsloth
 import os
 import sys
@@ -18,10 +19,12 @@ from unsloth.chat_templates import train_on_responses_only
 from datasets import Dataset, concatenate_datasets
 from finetune_util import load_jsonl, generate_conversation, formatting_prompts_func
 
+
 def get_parser():
     parser = argparse.ArgumentParser("LGP", add_help=False)
     parser.add_argument("--config", default="runs/", type=str, required=False)
     return parser
+
 
 def load_parquet_as_text(file_path):
     """Load a parquet file and combine title + content into a text field."""
@@ -41,33 +44,41 @@ def load_parquet_as_text(file_path):
         rows.append(dict(text=text))
     return rows
 
-def load_training_data(file_path, loss_type, think_start="<think>", think_end="</think>"):
+
+def load_training_data(
+    file_path, loss_type, think_start="<think>", think_end="</think>"
+):
     """Load training data from JSON, JSONL, or parquet, returning a Dataset."""
     if file_path.endswith(".parquet"):
         rows = load_parquet_as_text(file_path)
         return Dataset.from_list(rows)
 
     if file_path.endswith(".json"):
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             rows = json.load(f)
     else:
         rows = load_jsonl(file_path)
 
     if loss_type == "sft":
-        return Dataset.from_list(generate_conversation(rows, think_start=think_start, think_end=think_end))
+        return Dataset.from_list(
+            generate_conversation(rows, think_start=think_start, think_end=think_end)
+        )
     else:
         return Dataset.from_list(rows)
 
+
 def train(config):
     """Prepare lora model, call training function, and push to hub"""
-    print(f"Loading model {config['model']} with load_in_4bit={config['load_in_4bit']}...")
+    print(
+        f"Loading model {config['model']} with load_in_4bit={config['load_in_4bit']}..."
+    )
     model, processor = FastLanguageModel.from_pretrained(
         model_name=config["model"],
         dtype=torch.bfloat16,
         device_map="auto",
         load_in_4bit=config["load_in_4bit"],
         max_seq_length=config["max_seq_length"],
-        fast_inference=False, # not supported for moe
+        fast_inference=False,  # not supported for moe
     )
     tokenizer = processor.tokenizer
     target_modules = config["target_modules"]
@@ -87,10 +98,20 @@ def train(config):
     # load datasets
     think_start = config.get("think_start", "<think>")
     think_end = config.get("think_end", "</think>")
-    train_dataset = load_training_data(config["training_file"], config["loss"], think_start=think_start, think_end=think_end)
+    train_dataset = load_training_data(
+        config["training_file"],
+        config["loss"],
+        think_start=think_start,
+        think_end=think_end,
+    )
     eval_dataset = None
     if config["val_file"]:
-        eval_dataset = load_training_data(config["val_file"], config["loss"], think_start=think_start, think_end=think_end)
+        eval_dataset = load_training_data(
+            config["val_file"],
+            config["loss"],
+            think_start=think_start,
+            think_end=think_end,
+        )
     else:
         print("No test file provided, splitting 10% of training data for validation")
         # Split 10% of train data for testing when no test set provided
@@ -102,75 +123,79 @@ def train(config):
     if config["concatenate_datasets"]:
         print("Concatenating train and eval datasets for training...")
         train_dataset = concatenate_datasets([train_dataset, eval_dataset])
-   
+
     train_dataset = train_dataset.map(
-        formatting_prompts_func, 
-        batched = True,
-        fn_kwargs={
-            "tokenizer": tokenizer,
-            "verbose": config["verbose_formatting"]
-        },
+        formatting_prompts_func,
+        batched=True,
+        fn_kwargs={"tokenizer": tokenizer, "verbose": config["verbose_formatting"]},
     )
     if eval_dataset is not None:
         eval_dataset = eval_dataset.map(
-            formatting_prompts_func, 
-            batched = True,
-            fn_kwargs={
-                "tokenizer": tokenizer,
-                "verbose": config["verbose_formatting"]
-            },
+            formatting_prompts_func,
+            batched=True,
+            fn_kwargs={"tokenizer": tokenizer, "verbose": config["verbose_formatting"]},
         )
 
     trainer = SFTTrainer(
-        model = model,
-        tokenizer = tokenizer,
-        train_dataset = train_dataset,
-        eval_dataset = eval_dataset if not config["concatenate_datasets"] else None,
-        args = SFTConfig(
-            per_device_train_batch_size = config["batch_size"],
-            gradient_accumulation_steps = config["gradient_accumulation_steps"], 
-            per_device_eval_batch_size=config["per_device_eval_batch_size"],  
-            warmup_steps = config["warmup_steps"],
-            num_train_epochs = config["num_train_epochs"],
-            max_steps = config["max_steps"],
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset if not config["concatenate_datasets"] else None,
+        args=SFTConfig(
+            per_device_train_batch_size=config["batch_size"],
+            gradient_accumulation_steps=config["gradient_accumulation_steps"],
+            per_device_eval_batch_size=config["per_device_eval_batch_size"],
+            warmup_steps=config["warmup_steps"],
+            num_train_epochs=config["num_train_epochs"],
+            max_steps=config["max_steps"],
             save_strategy=config["save_strategy"],
-            learning_rate = float(config["learning_rate"]),
-            logging_steps = int(config["logging_steps"]),
-            optim = config["optim"],
-            weight_decay = float(config["weight_decay"]),
-            lr_scheduler_type = config["lr_scheduler_type"],
-            seed = int(config["seed"]),
-            output_dir = config["output_dir"],
-            report_to = config["report_to"], # Use this for WandB etc
+            learning_rate=float(config["learning_rate"]),
+            logging_steps=int(config["logging_steps"]),
+            optim=config["optim"],
+            weight_decay=float(config["weight_decay"]),
+            lr_scheduler_type=config["lr_scheduler_type"],
+            seed=int(config["seed"]),
+            output_dir=config["output_dir"],
+            report_to=config["report_to"],  # Use this for WandB etc
             do_eval=config["do_eval"],
             eval_strategy=config["eval_strategy"],
         ),
     )
     # train on the assistant outputs and ignore the loss on the user's inputs.
-    if config['train_on_responses_only']:
+    if config["train_on_responses_only"]:
         trainer = train_on_responses_only(
             trainer,
-            instruction_part = config.get("instruction_part", "<|im_start|>user\n"),
-            response_part = config.get("response_part", f"<|im_start|>assistant\n{think_start}"),
+            instruction_part=config.get("instruction_part", "<|im_start|>user\n"),
+            response_part=config.get(
+                "response_part", f"<|im_start|>assistant\n{think_start}"
+            ),
         )
     trainer.train(resume_from_checkpoint=config["resume_from_checkpoint"])
     save_method = "merged_16bit" if "oss" not in config["model"] else "mxfp4"
-    model.save_pretrained_merged(config["output_dir"], tokenizer, save_method = save_method,)
+    model.save_pretrained_merged(
+        config["output_dir"],
+        tokenizer,
+        save_method=save_method,
+    )
+
 
 def main(config_path: str):
     with open(config_path, "r") as f:
         config_data = yaml.safe_load(f)
-    
+
     if "wandb_project" in config_data:
         os.environ["WANDB_PROJECT"] = config_data["wandb_project"]
-    os.environ["TOKENIZERS_PARALLELISM"] = "false" 
-    os.environ['UNSLOTH_MOE_DISABLE_AUTOTUNE']='1'
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["UNSLOTH_MOE_DISABLE_AUTOTUNE"] = "1"
 
     train(config_data)
 
     print(f"Saving config to {config_data['output_dir']}/{config_data['name']}.yaml")
-    with open(os.path.join(config_data['output_dir'], f"{config_data['name']}.yaml"), "w") as f:
+    with open(
+        os.path.join(config_data["output_dir"], f"{config_data['name']}.yaml"), "w"
+    ) as f:
         yaml.dump(config_data, f)
+
 
 if __name__ == "__main__":
     main(sys.argv[1])

@@ -82,7 +82,9 @@ def resolve_model_to_local_dir(model_path: str, parent_model_id: str | None) -> 
     print(f"[resolve] {model_path}: downloading snapshot (no-op if cached)")
     local_dir = snapshot_download(model_path)
     if parent_model_id:
-        print(f"[resolve] {model_path}: copying preprocessor JSONs from {parent_model_id}")
+        print(
+            f"[resolve] {model_path}: copying preprocessor JSONs from {parent_model_id}"
+        )
         parent_dir = snapshot_download(
             parent_model_id, allow_patterns=["*.json", "*.txt"]
         )
@@ -157,8 +159,10 @@ def parse_sysprompt_arg(spec: str) -> tuple[str, str | None]:
         key = key.strip()
     else:
         path = spec
-        key = "default" if path == "none" else re.sub(
-            r"^systemprompt[-_]?", "", Path(path).stem
+        key = (
+            "default"
+            if path == "none"
+            else re.sub(r"^systemprompt[-_]?", "", Path(path).stem)
         )
     if path == "none":
         return key, None
@@ -176,7 +180,11 @@ def build_messages(question: dict, system_prompt: str | None) -> list[dict]:
 def answer_paths(
     bench_name: str, mutation: str | None, model_id: str
 ) -> tuple[Path, Path]:
-    base = "model_answer" if mutation in (None, "", "question") else f"model_answer_{mutation}"
+    base = (
+        "model_answer"
+        if mutation in (None, "", "question")
+        else f"model_answer_{mutation}"
+    )
     base_dir = Path(f"data/{bench_name}/{base}")
     base_dir.mkdir(parents=True, exist_ok=True)
     return base_dir / f"{model_id}.jsonl", base_dir / f"{model_id}.with_thinking.jsonl"
@@ -221,14 +229,20 @@ def write_answer_rows(
                 "model_id": model_id,
                 "tstamp": tstamp,
             }
-            out.write(json.dumps(
-                {**base_row, "choices": [{"index": 0, "turns": stripped_turns}]},
-                ensure_ascii=False,
-            ) + "\n")
-            out_full.write(json.dumps(
-                {**base_row, "choices": [{"index": 0, "turns": full_turns}]},
-                ensure_ascii=False,
-            ) + "\n")
+            out.write(
+                json.dumps(
+                    {**base_row, "choices": [{"index": 0, "turns": stripped_turns}]},
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+            out_full.write(
+                json.dumps(
+                    {**base_row, "choices": [{"index": 0, "turns": full_turns}]},
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
 
 
 def reorg_answer_file(answer_file: Path) -> None:
@@ -330,7 +344,12 @@ def run_sweep(args: argparse.Namespace) -> None:
             )
 
             write_answer_rows(
-                answer_file, with_thinking_file, todo, outputs, model_id, split_fn,
+                answer_file,
+                with_thinking_file,
+                todo,
+                outputs,
+                model_id,
+                split_fn,
             )
             reorg_answer_file(answer_file)
             reorg_answer_file(with_thinking_file)
@@ -338,7 +357,9 @@ def run_sweep(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", required=True, help="HuggingFace repo id or local path.")
+    parser.add_argument(
+        "--model-path", required=True, help="HuggingFace repo id or local path."
+    )
     parser.add_argument(
         "--parent-model-id",
         default=None,
@@ -365,8 +386,12 @@ def main() -> None:
         "'key=path', a bare 'path' (key inferred from filename stem), or "
         "the literal 'none' (no system message).",
     )
-    parser.add_argument("--question-begin", type=int, default=None, help="Debug slice start.")
-    parser.add_argument("--question-end", type=int, default=None, help="Debug slice end.")
+    parser.add_argument(
+        "--question-begin", type=int, default=None, help="Debug slice start."
+    )
+    parser.add_argument(
+        "--question-end", type=int, default=None, help="Debug slice end."
+    )
     parser.add_argument("--max-new-tokens", type=int, default=8192)
     parser.add_argument(
         "--reasoning-parser",
@@ -374,9 +399,13 @@ def main() -> None:
         help="vLLM reasoning parser name (default: qwen3). "
         "Use 'none' to disable and fall back to manual </think> split.",
     )
-    parser.add_argument("--temperature", type=float, default=0.7, help="SORRY-Bench default.")
+    parser.add_argument(
+        "--temperature", type=float, default=0.7, help="SORRY-Bench default."
+    )
     parser.add_argument("--top-p", type=float, default=1.0)
-    parser.add_argument("--tensor-parallel-size", type=int, default=4, help="4×B200 default.")
+    parser.add_argument(
+        "--tensor-parallel-size", type=int, default=4, help="4×B200 default."
+    )
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.92)
     parser.add_argument(
         "--max-model-len",
@@ -387,7 +416,9 @@ def main() -> None:
     )
     parser.add_argument("--dtype", default="bfloat16")
     parser.add_argument(
-        "--enable-thinking", action="store_true", default=True,
+        "--enable-thinking",
+        action="store_true",
+        default=True,
         help="Qwen3 chat-template flag. Default on; we strip <think>…</think> "
         "from the judge-facing file post-hoc.",
     )

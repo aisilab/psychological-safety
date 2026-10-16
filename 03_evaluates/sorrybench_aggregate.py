@@ -23,6 +23,7 @@ Usage:
         --out-dir results/sorrybench \\
         --exclude-ids-file sorrybench_leaked_ids.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -111,21 +112,27 @@ def main() -> None:
     p.add_argument("--sorry-bench-dir", required=True, type=Path)
     p.add_argument("--bench-name", default="sorry_bench")
     p.add_argument("--out-dir", required=True, type=Path)
-    p.add_argument("--prompt-order", default="default,v0,v1",
-                   help="Column order in the main table.")
     p.add_argument(
-        "--exclude-ids-file", type=Path,
+        "--prompt-order",
+        default="default,v0,v1",
+        help="Column order in the main table.",
+    )
+    p.add_argument(
+        "--exclude-ids-file",
+        type=Path,
         default=Path(__file__).with_name("sorrybench_leaked_ids.json"),
         help="JSON with a `question_ids` list to drop (SFT-train contamination). "
-             "Pass an empty/nonexistent path to disable decontamination.",
+        "Pass an empty/nonexistent path to disable decontamination.",
     )
     args = p.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     exclude_ids = load_exclude_ids(args.exclude_ids_file)
     if exclude_ids:
-        print(f"Excluding {len(exclude_ids)} contaminated question_id(s) "
-              f"from {args.exclude_ids_file}")
+        print(
+            f"Excluding {len(exclude_ids)} contaminated question_id(s) "
+            f"from {args.exclude_ids_file}"
+        )
     categories = load_categories(args.sorry_bench_dir, args.bench_name)
     files = discover_judgment_files(args.sorry_bench_dir, args.bench_name)
     if not files:
@@ -140,9 +147,11 @@ def main() -> None:
     )
     # cat[mutation][model_root][prompt][category] = {"complied": int, "total": int}
     cat_rate: dict = defaultdict(
-        lambda: defaultdict(lambda: defaultdict(
-            lambda: defaultdict(lambda: {"complied": 0, "total": 0})
-        ))
+        lambda: defaultdict(
+            lambda: defaultdict(
+                lambda: defaultdict(lambda: {"complied": 0, "total": 0})
+            )
+        )
     )
 
     for mutation, path in sorted(files.items()):
@@ -170,28 +179,62 @@ def main() -> None:
     per_mut = args.out_dir / "sorrybench_per_mutation.csv"
     with per_mut.open("w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["mutation", "model", "system_prompt", "n", "complied",
-                    "compliance_rate_pct"])
+        w.writerow(
+            [
+                "mutation",
+                "model",
+                "system_prompt",
+                "n",
+                "complied",
+                "compliance_rate_pct",
+            ]
+        )
         for mutation in sorted(rate):
             for model in sorted(rate[mutation]):
                 for prompt in sorted(rate[mutation][model]):
                     b = rate[mutation][model][prompt]
-                    w.writerow([mutation, model, prompt, b["total"], b["complied"],
-                                f"{pct(b):.2f}"])
+                    w.writerow(
+                        [
+                            mutation,
+                            model,
+                            prompt,
+                            b["total"],
+                            b["complied"],
+                            f"{pct(b):.2f}",
+                        ]
+                    )
 
     # ---- per-category CSV ----
     per_cat = args.out_dir / "sorrybench_per_category.csv"
     with per_cat.open("w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["mutation", "model", "system_prompt", "category",
-                    "n", "complied", "compliance_rate_pct"])
+        w.writerow(
+            [
+                "mutation",
+                "model",
+                "system_prompt",
+                "category",
+                "n",
+                "complied",
+                "compliance_rate_pct",
+            ]
+        )
         for mutation in sorted(cat_rate):
             for model in sorted(cat_rate[mutation]):
                 for prompt in sorted(cat_rate[mutation][model]):
                     for category in sorted(cat_rate[mutation][model][prompt]):
                         b = cat_rate[mutation][model][prompt][category]
-                        w.writerow([mutation, model, prompt, category,
-                                    b["total"], b["complied"], f"{pct(b):.2f}"])
+                        w.writerow(
+                            [
+                                mutation,
+                                model,
+                                prompt,
+                                category,
+                                b["total"],
+                                b["complied"],
+                                f"{pct(b):.2f}",
+                            ]
+                        )
 
     # ---- main paper table ----
     prompt_order = [p.strip() for p in args.prompt_order.split(",")]
@@ -221,7 +264,7 @@ def main() -> None:
 
     def mut_cell(model: str, prompt: str) -> str:
         vals = mut_rate.get(model, {}).get(prompt, [])
-        return f"{sum(vals)/len(vals):.1f}" if vals else "--"
+        return f"{sum(vals) / len(vals):.1f}" if vals else "--"
 
     # ---- overall CSV (the former main table) ----
     overall = args.out_dir / "sorrybench_overall.csv"
@@ -251,18 +294,28 @@ def main() -> None:
         + [mut_cell(model, p) for p in prompt_order]
         for model in models
     ]
-    widths = [max(len(headers[i]), *(len(r[i]) for r in rows_out)) if rows_out
-              else len(headers[i]) for i in range(len(headers))]
+    widths = [
+        max(len(headers[i]), *(len(r[i]) for r in rows_out))
+        if rows_out
+        else len(headers[i])
+        for i in range(len(headers))
+    ]
 
     def fmt(cells: list[str]) -> str:
-        return "  ".join(c.ljust(widths[i]) if i == 0 else c.rjust(widths[i])
-                         for i, c in enumerate(cells))
+        return "  ".join(
+            c.ljust(widths[i]) if i == 0 else c.rjust(widths[i])
+            for i, c in enumerate(cells)
+        )
 
-    print(f"\nSORRY-Bench compliance rate (%, lower is safer) | "
-          f"base={base_n} prompts, {n_mutations} mutations")
+    print(
+        f"\nSORRY-Bench compliance rate (%, lower is safer) | "
+        f"base={base_n} prompts, {n_mutations} mutations"
+    )
     if exclude_ids:
-        print(f"decontaminated: {len(exclude_ids)} base prompts removed "
-              f"(verbatim in SFT train split)")
+        print(
+            f"decontaminated: {len(exclude_ids)} base prompts removed "
+            f"(verbatim in SFT train split)"
+        )
     print(fmt(headers))
     print("-" * len(fmt(headers)))
     for r in rows_out:
